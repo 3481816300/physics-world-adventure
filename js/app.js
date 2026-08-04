@@ -282,6 +282,16 @@ const App = {
     Input.gameActive = false;
   },
 
+  switchServerAccount(token) {
+    if (!Save.switchServerAccount(token)) return;
+    UI.updateAccountButton();
+    UI.renderDifficultySelector();
+    UI.updateResumeSaveButton();
+    UI.showToast(`已切换到 ${Save.getAccountName()}`);
+    this.showTitle();
+    this.maybeShowNextRequiredModal();
+  },
+
   enterGuest() {
     Save.setOnboarded();
     UI.hideOnboarding();
