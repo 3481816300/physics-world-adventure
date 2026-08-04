@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>物理世界奇遇记</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="ambientCanvas" width="1600" height="900" aria-hidden="true"></canvas>
+
+    <section id="screen-title" class="screen is-active" data-screen="title">
+      <div class="title-shell">
+        <p class="eyebrow">法则修复局 · 特勤终端</p>
+        <h1 class="title-name">物理世界奇遇记</h1>
+        <p class="title-sub">进入维度碎片，稳定失衡的法则核心</p>
+        <div class="difficulty-selector" id="difficultySelector" role="group" aria-label="游戏难度"></div>
+        <div class="title-actions">
+          <button class="btn btn-primary" id="btn-start" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            开始冒险
+          </button>
+          <button class="btn btn-ghost" id="btn-howto" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+            游戏说明
+          </button>
+          <button class="btn btn-ghost" id="btn-shop" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            纪念品商店
+          </button>
+          <button class="btn btn-ghost" id="btn-characters" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            角色管理
+          </button>
+          <button class="btn btn-ghost" id="btn-account" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+            账号管理
+          </button>
+          <button class="btn btn-ghost" id="btn-resume-save" type="button" hidden>继续暂存进度</button>
+          <button class="btn btn-ghost btn-clear-save" id="btn-clear-save" type="button">清空记录</button>
+        </div>
+        <p class="title-version">ALPHA · 框架预览</p>
+      </div>
+      <button class="admin-button" id="btn-admin" type="button" title="管理员模式">管理员模式</button>
+    </section>
+
+    <section id="screen-chapters" class="screen" data-screen="chapters">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-chapters-back" type="button" aria-label="返回标题">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>维度裂隙地图</h2>
+          <p id="chapterProgressText">0/13</p>
+        </div>
+        <div class="topbar-right">
+          <span id="adminBadge" class="admin-badge" hidden>管理员</span>
+          <button class="mini-btn admin-only" id="btn-exit-admin" type="button" hidden>退出管理员</button>
+        </div>
+      </header>
+      <div class="world-map-wrap" id="worldMapWrap">
+        <svg id="worldMapSvg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+        <div class="map-nodes" id="mapNodes"></div>
+        <div class="map-legend">
+          <span class="legend-item"><i class="legend-dot completed"></i>已稳定</span>
+          <span class="legend-item"><i class="legend-dot unlocked"></i>可进入</span>
+          <span class="legend-item"><i class="legend-dot locked"></i>未解锁</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-levels" class="screen" data-screen="levels">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-levels-back" type="button" aria-label="返回章节地图">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2 id="levelChapterName">章节</h2>
+          <p id="levelChapterSubject">学科</p>
+        </div>
+        <div class="topbar-right">
+          <span id="adminBadgeLevels" class="admin-badge" hidden>管理员</span>
+          <button class="mini-btn admin-only" id="btn-exit-admin-levels" type="button" hidden>退出管理员</button>
+        </div>
+      </header>
+      <div class="level-list" id="levelList"></div>
+    </section>
+
+    <section id="screen-game" class="screen" data-screen="game">
+      <canvas id="gameCanvas" width="960" height="640"></canvas>
+      <div class="game-topbar">
+        <button class="icon-btn" id="btn-game-back" type="button" aria-label="退出关卡">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <span id="hudLevelName">未命名关卡</span>
+          <span id="hudChapterName">章节</span>
+        </div>
+        <div class="topbar-right">
+          <button class="mini-btn" id="btn-pause" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>
+          </button>
+          <button class="mini-btn admin-only" id="btn-simulate-complete" type="button" hidden title="仅测试用：传送到法则核心附近">传送至核心（测试）</button>
+        </div>
+      </div>
+      <div class="mc-hud">
+        <div class="mc-left">
+          <div class="hearts-panel" id="hudHearts" title="生命值"></div>
+          <div class="shard-counter" id="hudShards">能量碎片 0/3</div>
+        </div>
+        <div class="hotbar" id="hotbar" aria-label="物品栏"></div>
+      </div>
+      <div class="game-status" id="gameStatus">关卡内容待设计</div>
+    </section>
+
+    <section id="screen-howto" class="screen" data-screen="howto">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-howto-back" type="button" aria-label="返回标题">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>游戏说明</h2>
+        </div>
+      </header>
+      <div class="howto-panel">
+        <div class="howto-section">
+          <h3>操作</h3>
+          <div class="key-grid">
+            <span>A / D</span><p>左右移动</p>
+            <span>W / 空格</span><p>跳跃</p>
+            <span>S</span><p>潜行 / 下蹲</p>
+            <span>E</span><p>互动</p>
+            <span>Q</span><p>使用当前道具</p>
+            <span>1-6 / Z / X / 滚轮</span><p>切换物品栏</p>
+            <span>R</span><p>重置到检查点</p>
+            <span>Esc / P</span><p>暂停</p>
+          </div>
+        </div>
+        <div class="howto-section">
+          <h3>模式</h3>
+          <p>简单模式：完成第 1-9 章即视为完整通关。</p>
+          <p>完整模式：解锁全部隐藏章节与终章。</p>
+          <p>炼狱模式：取消教学关，难度与资源限制提高。</p>
+        </div>
+        <div class="howto-section">
+          <h3>当前版本</h3>
+          <p>本版本为初始框架预览：章节、关卡槽位、存档、管理员模式、占位运行层均已就绪。</p>
+          <p>每关具体内容后续按设计逐关填充。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-shop" class="screen" data-screen="shop">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-shop-back" type="button" aria-label="返回标题">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>纪念品商店</h2>
+          <p id="shopCurrency">法则能量 0</p>
+        </div>
+        <div class="topbar-right"></div>
+      </header>
+      <div class="shop-grid" id="shopGrid"></div>
+    </section>
+
+    <section id="screen-characters" class="screen" data-screen="characters">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-characters-back" type="button" aria-label="返回标题">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>角色管理</h2>
+          <p id="characterCurrency">法则能量 0</p>
+        </div>
+        <div class="topbar-right"></div>
+      </header>
+      <div class="character-layout">
+        <section class="character-panel">
+          <h3>角色皮肤</h3>
+          <div class="character-info" id="characterInfo"></div>
+          <div class="character-grid" id="characterGrid"></div>
+        </section>
+        <section class="character-panel">
+          <h3>携带纪念品 <span>最多 3 个</span></h3>
+          <div class="souvenir-loadout" id="souvenirLoadout"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="screen-account" class="screen" data-screen="account">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-account-back" type="button" aria-label="返回标题">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>账号管理</h2>
+          <p id="accountCurrentLabel">当前账号</p>
+        </div>
+        <div class="topbar-right"></div>
+      </header>
+      <div class="account-panel" id="accountPanel"></div>
+    </section>
+
+    <div id="pauseOverlay" class="overlay" hidden>
+      <div class="pause-layout">
+        <div class="modal pause-actions">
+          <h2>暂停</h2>
+          <button class="btn btn-primary" id="btn-resume" type="button">继续游戏</button>
+          <button class="btn btn-ghost" id="btn-pause-save" type="button">暂存本关进度并返回菜单</button>
+          <button class="btn btn-ghost" id="btn-restart" type="button">重置关卡</button>
+          <button class="btn btn-ghost" id="btn-leave-level" type="button">返回关卡列表</button>
+        </div>
+        <aside class="pause-info">
+          <div class="pause-skin-box" id="pauseSkinBox"></div>
+          <h3 id="pauseSkinName">波尔</h3>
+          <div class="pause-user-info" id="pauseUserInfo"></div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="completionOverlay" class="overlay completion-overlay" hidden>
+      <div class="completion-card">
+        <div class="completion-rays" aria-hidden="true"></div>
+        <p class="completion-kicker">法则核心已稳定</p>
+        <h2 id="completionLevelName">关卡完成</h2>
+        <div class="completion-stars" id="completionStars"></div>
+        <div class="completion-stats">
+          <div><span>用时</span><strong id="completionTime">0s</strong></div>
+          <div><span>死亡</span><strong id="completionDeaths">0</strong></div>
+          <div><span>碎片</span><strong id="completionShards">0/3</strong></div>
+        </div>
+        <div class="completion-actions">
+          <button class="btn btn-primary" id="btn-completion-restart" type="button">再次挑战</button>
+          <button class="btn btn-ghost" id="btn-completion-back" type="button">返回关卡列表</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="adminModal" class="modal-backdrop" hidden>
+      <div class="modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+        <h2 id="adminTitle">管理员模式</h2>
+        <p class="modal-copy">验证后可以浏览全部章节与关卡，不受正常解锁顺序限制。</p>
+        <input id="adminPassword" class="text-input" type="password" autocomplete="off" placeholder="输入管理员密码" enterkeyhint="go">
+        <p class="modal-error" id="adminError" hidden>密码不正确</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-admin-ok" type="button">验证</button>
+          <button class="btn btn-ghost" id="btn-admin-cancel" type="button">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="firstRunModal" class="modal-backdrop" hidden>
+      <div class="modal first-run-modal" role="dialog" aria-modal="true" aria-labelledby="firstRunTitle">
+        <h2 id="firstRunTitle">选择游戏难度</h2>
+        <p class="modal-copy">请选择你的冒险难度。选择后无法再次更改，除非清空全部游玩记录。</p>
+        <div class="first-run-options" id="firstRunOptions"></div>
+        <p class="modal-error" id="firstRunError" hidden>请选择一个难度</p>
+      </div>
+    </div>
+
+    <div id="onboardingModal" class="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+        <h2 id="onboardingTitle">选择游玩方式</h2>
+        <p class="modal-copy">默认为游客模式下，当前模式下不会保存游戏记录，请注册账号。</p>
+        <div class="onboarding-actions">
+          <button class="btn btn-primary" id="btn-onboard-register" type="button">注册账号</button>
+          <button class="btn btn-danger" id="btn-onboard-guest" type="button">不了，谢谢</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="registerModal" class="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="registerTitle">
+        <h2 id="registerTitle">注册账号</h2>
+        <p class="modal-copy">昵称将在服务器上唯一保存，密码用于其他设备登录。</p>
+        <div class="register-fields">
+          <div class="register-row">
+            <input id="registerNickname" class="text-input" maxlength="16" placeholder="随机昵称">
+            <button class="btn btn-ghost" id="btn-random-name" type="button">换一个</button>
+          </div>
+          <input id="registerPassword" class="text-input" type="password" placeholder="密码（至少 4 位）">
+          <input id="registerPasswordConfirm" class="text-input" type="password" placeholder="确认密码">
+        </div>
+        <p class="modal-error" id="registerError" hidden></p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-register-submit" type="button">注册</button>
+          <button class="btn btn-ghost" id="btn-register-cancel" type="button">返回</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loginModal" class="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <h2 id="loginTitle">登录账号</h2>
+        <p class="modal-copy">使用昵称和密码在其他设备继续游戏。</p>
+        <input id="loginNickname" class="text-input" maxlength="16" placeholder="昵称">
+        <input id="loginPassword" class="text-input" type="password" placeholder="密码">
+        <p class="modal-error" id="loginError" hidden></p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-login-submit" type="button">登录</button>
+          <button class="btn btn-ghost" id="btn-login-cancel" type="button">返回</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="backgroundModal" class="modal-backdrop" hidden>
+      <div class="modal story-modal" role="dialog" aria-modal="true" aria-labelledby="backgroundTitle">
+        <h2 id="backgroundTitle">背景设定</h2>
+        <div class="story-text" id="backgroundText"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-background-continue" type="button">继续</button>
+          <button class="btn btn-ghost" id="btn-background-skip" type="button">跳过</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="chapterIntroModal" class="modal-backdrop" hidden>
+      <div class="modal chapter-intro-modal" role="dialog" aria-modal="true" aria-labelledby="expertName">
+        <div class="expert-portrait" id="expertPortrait">贤</div>
+        <h2 id="expertName">领域大咖</h2>
+        <p class="expert-title" id="expertTitle"></p>
+        <p class="expert-quote" id="expertQuote"></p>
+        <div class="expert-content" id="expertContent"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-intro-continue" type="button">继续</button>
+          <button class="btn btn-ghost" id="btn-intro-skip" type="button">跳过</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="endPoemModal" class="modal-backdrop" hidden>
+      <div class="modal end-poem-modal" role="dialog" aria-modal="true" aria-labelledby="endPoemTitle">
+        <h2 id="endPoemTitle">终末之诗</h2>
+        <div class="end-poem-text" id="endPoemText"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-poem-continue" type="button">继续</button>
+          <button class="btn btn-ghost" id="btn-poem-skip" type="button">跳过</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/levels.js"></script>
+  <script src="js/souvenirs.js"></script>
+  <script src="js/story.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/runtime.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
