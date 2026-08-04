@@ -1,4 +1,5 @@
 const SERVER_TOKEN_KEY = "physics-server-token";
+const SERVER_ACCOUNTS_KEY = "physics-server-accounts";
 const SERVER_CACHE_KEY = "physics-server-cache";
 const SERVER_NICKNAME_KEY = "physics-server-nickname";
 const GUEST_SAVE_KEY = "physics-guest-save-v1";
@@ -18,11 +19,18 @@ const Save = {
   serverToken: null,
   serverNickname: "游客",
   serverPassword: null,
+  serverAccounts: {},
 
   load() {
     this.mode = "guest";
     this.serverToken = null;
     this.serverNickname = "游客";
+    this.serverAccounts = {};
+    try {
+      this.serverAccounts = JSON.parse(localStorage.getItem(SERVER_ACCOUNTS_KEY) || "{}");
+    } catch {
+      this.serverAccounts = {};
+    }
 
     try {
       const token = localStorage.getItem(SERVER_TOKEN_KEY);
@@ -72,6 +80,7 @@ const Save = {
       try {
         localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
         localStorage.setItem(SERVER_NICKNAME_KEY, this.serverNickname);
+        this.persistServerAccounts();
       } catch {
         // storage unavailable
       }
@@ -88,6 +97,14 @@ const Save = {
     }
   },
 
+  persistServerAccounts() {
+    try {
+      localStorage.setItem(SERVER_ACCOUNTS_KEY, JSON.stringify(this.serverAccounts || {}));
+    } catch {
+      // storage unavailable
+    }
+  },
+
   reset() {
     this.data = this.defaultData();
     this.save();
@@ -99,20 +116,32 @@ const Save = {
     this.serverNickname = nickname;
     this.serverPassword = password;
     this.data = Object.assign(this.defaultData(), saveData || {});
+    this.serverAccounts[token] = {
+      nickname,
+      token,
+      saveData: this.data,
+      addedAt: Date.now()
+    };
     try {
       localStorage.setItem(SERVER_TOKEN_KEY, token);
       localStorage.setItem(SERVER_NICKNAME_KEY, nickname);
       localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+      this.persistServerAccounts();
     } catch {
       // storage unavailable
     }
   },
 
   clearServerSession() {
+    if (this.serverToken && this.serverAccounts) {
+      delete this.serverAccounts[this.serverToken];
+      this.persistServerAccounts();
+    }
     this.mode = "guest";
     this.serverToken = null;
     this.serverNickname = "游客";
     this.serverPassword = null;
+    this.serverAccounts = this.serverAccounts || {};
     this.data = this.defaultData();
     try {
       localStorage.removeItem(SERVER_TOKEN_KEY);
@@ -122,6 +151,27 @@ const Save = {
     } catch {
       // storage unavailable
     }
+  },
+
+  getServerAccounts() {
+    return Object.values(this.serverAccounts || {});
+  },
+
+  switchServerAccount(token) {
+    const account = this.serverAccounts[token];
+    if (!account) return false;
+    this.mode = "server";
+    this.serverToken = account.token;
+    this.serverNickname = account.nickname;
+    this.data = Object.assign(this.defaultData(), account.saveData || {});
+    try {
+      localStorage.setItem(SERVER_TOKEN_KEY, account.token);
+      localStorage.setItem(SERVER_NICKNAME_KEY, account.nickname);
+      localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+    } catch {
+      // storage unavailable
+    }
+    return true;
   },
 
   isGuest() {
@@ -139,6 +189,10 @@ const Save = {
   renameActiveAccount(name) {
     const normalized = String(name || "").trim().slice(0, 16) || "玩家1";
     this.serverNickname = normalized;
+    if (this.serverToken && this.serverAccounts[this.serverToken]) {
+      this.serverAccounts[this.serverToken].nickname = normalized;
+      this.persistServerAccounts();
+    }
     this.save();
     return normalized;
   },
