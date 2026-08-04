@@ -130,6 +130,10 @@ const App = {
     document.getElementById("btn-register-cancel").addEventListener("click", () => UI.hideRegister());
     document.getElementById("btn-login-submit").addEventListener("click", () => this.loginAccount());
     document.getElementById("btn-login-cancel").addEventListener("click", () => UI.hideLogin());
+    document.getElementById("btn-login-to-register").addEventListener("click", () => {
+      UI.hideLogin();
+      UI.openRegister();
+    });
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-background-skip").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-intro-continue").addEventListener("click", () => this.continueChapterIntro());
