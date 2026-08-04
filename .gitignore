@@ -1,4 +1,5 @@
 dist/
+preview-*.png
 data/accounts.json
 data/sessions.json
 node_modules/
