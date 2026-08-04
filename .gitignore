@@ -1,0 +1,4 @@
+dist/
+data/accounts.json
+data/sessions.json
+node_modules/
