@@ -364,6 +364,19 @@ const App = {
     this.showTitle();
   },
 
+  switchAccount() {
+    if (Save.serverToken) {
+      Api.logout(Save.serverToken).catch(() => {});
+    }
+    Save.clearServerSession();
+    Save.setOnboarded();
+    UI.updateAccountButton();
+    UI.renderDifficultySelector();
+    UI.showToast("请登录其他账号");
+    UI.openLogin();
+    this.showTitle();
+  },
+
   async changePassword(oldPassword, newPassword, confirmPassword) {
     if (Save.isGuest()) return;
     const message = document.getElementById("passwordMessage");
