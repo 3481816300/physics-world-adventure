@@ -484,6 +484,7 @@ const UI = {
       <div class="account-actions" style="margin-top:14px">
         <button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>
         <button id="btn-account-switch" class="btn btn-ghost" type="button">登录另一个账号</button>
+        <button id="btn-account-register-another" class="btn btn-ghost" type="button">注册另一个账号</button>
       </div>
       <div class="password-section">
         <h4>修改密码</h4>
@@ -502,6 +503,7 @@ const UI = {
     });
     card.querySelector("#btn-account-logout").addEventListener("click", () => App.logoutAccount());
     card.querySelector("#btn-account-switch").addEventListener("click", () => UI.openLogin());
+    card.querySelector("#btn-account-register-another").addEventListener("click", () => UI.openRegister());
     card.querySelector("#btn-change-password").addEventListener("click", () => {
       App.changePassword(
         card.querySelector("#oldPassword").value,
