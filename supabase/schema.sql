@@ -79,13 +79,13 @@ begin
   insert into players (nickname, password_hash, default_name, assigned_at)
   values (
     p_nickname,
-    crypt(p_password, gen_salt('bf')),
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
     case when v_is_default then p_nickname else null end,
     case when v_is_default then now() else null end
   )
   returning id into v_player_id;
 
-  v_token := encode(gen_random_bytes(24), 'hex');
+  v_token := encode(extensions.gen_random_bytes(24), 'hex');
   insert into sessions (token, player_id) values (v_token, v_player_id);
   return jsonb_build_object('token', v_token, 'nickname', p_nickname, 'save_data', '{}'::jsonb);
 end;
@@ -109,11 +109,11 @@ begin
   from players
   where lower(nickname) = lower(p_nickname);
 
-  if v_player_id is null or v_password_hash <> crypt(p_password, v_password_hash) then
+  if v_player_id is null or v_password_hash <> extensions.crypt(p_password, v_password_hash) then
     raise exception '昵称或密码不正确';
   end if;
 
-  v_token := encode(gen_random_bytes(24), 'hex');
+  v_token := encode(extensions.gen_random_bytes(24), 'hex');
   insert into sessions (token, player_id) values (v_token, v_player_id);
   return jsonb_build_object('token', v_token, 'nickname', v_nickname, 'save_data', coalesce(v_save_data, '{}'::jsonb));
 end;
@@ -205,7 +205,7 @@ begin
   if v_player_id is null then
     raise exception '登录已失效';
   end if;
-  if v_password_hash <> crypt(p_old_password, v_password_hash) then
+  if v_password_hash <> extensions.crypt(p_old_password, v_password_hash) then
     raise exception '原密码不正确';
   end if;
   if char_length(p_new_password) < 4 then
@@ -213,7 +213,7 @@ begin
   end if;
 
   update players
-  set password_hash = crypt(p_new_password, gen_salt('bf')), updated_at = now()
+  set password_hash = extensions.crypt(p_new_password, extensions.gen_salt('bf')), updated_at = now()
   where id = v_player_id;
 
   return jsonb_build_object('ok', true);
