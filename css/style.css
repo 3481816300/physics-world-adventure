@@ -1544,6 +1544,11 @@ svg {
   font-size: 13px;
 }
 
+#btn-login-to-register {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .story-modal,
 .chapter-intro-modal,
 .end-poem-modal {
