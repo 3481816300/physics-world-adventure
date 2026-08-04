@@ -468,6 +468,7 @@ const UI = {
       card.querySelector("#btn-account-register").addEventListener("click", () => UI.openRegister());
       card.querySelector("#btn-account-login").addEventListener("click", () => UI.openLogin());
       panel.appendChild(card);
+      this.renderSavedAccounts(panel);
       return;
     }
 
@@ -482,7 +483,7 @@ const UI = {
       </div>
       <div class="account-actions" style="margin-top:14px">
         <button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>
-        <button id="btn-account-switch" class="btn btn-ghost" type="button">切换账号</button>
+        <button id="btn-account-switch" class="btn btn-ghost" type="button">登录另一个账号</button>
       </div>
       <div class="password-section">
         <h4>修改密码</h4>
@@ -500,7 +501,7 @@ const UI = {
       App.renameAccount(card.querySelector("#accountNickname").value);
     });
     card.querySelector("#btn-account-logout").addEventListener("click", () => App.logoutAccount());
-    card.querySelector("#btn-account-switch").addEventListener("click", () => App.switchAccount());
+    card.querySelector("#btn-account-switch").addEventListener("click", () => UI.openLogin());
     card.querySelector("#btn-change-password").addEventListener("click", () => {
       App.changePassword(
         card.querySelector("#oldPassword").value,
@@ -509,6 +510,37 @@ const UI = {
       );
     });
     card.querySelector("#btn-view-password").addEventListener("click", () => App.viewPassword());
+    panel.appendChild(card);
+    this.renderSavedAccounts(panel);
+  },
+
+  renderSavedAccounts(panel) {
+    const accounts = Save.getServerAccounts();
+    if (!accounts.length) return;
+    const card = document.createElement("section");
+    card.className = "account-card";
+    card.innerHTML = `<h3>本机已登录账号</h3><div class="account-list" id="savedAccountList"></div>`;
+    const list = card.querySelector("#savedAccountList");
+    accounts.forEach((account) => {
+      const row = document.createElement("div");
+      row.className = `account-row${account.token === Save.getActiveAccountId() ? " is-active" : ""}`;
+      const info = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = account.nickname;
+      const meta = document.createElement("span");
+      meta.textContent = account.token === Save.getActiveAccountId() ? "当前账号" : "已登录";
+      info.appendChild(name);
+      info.appendChild(meta);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-ghost";
+      button.textContent = account.token === Save.getActiveAccountId() ? "当前" : "切换";
+      button.disabled = account.token === Save.getActiveAccountId();
+      button.addEventListener("click", () => App.switchServerAccount(account.token));
+      row.appendChild(info);
+      row.appendChild(button);
+      list.appendChild(row);
+    });
     panel.appendChild(card);
   },
 
