@@ -1,4 +1,6 @@
 const Api = {
+  ADMIN_REGISTER_KEY: "HarryLI@20120622",
+
   isSupabaseReady() {
     return Boolean(SUPABASE_CONFIG && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
   },
@@ -47,7 +49,8 @@ const Api = {
     if (this.isSupabaseReady()) {
       return this.supabaseRpc("register_player", {
         p_nickname: nickname,
-        p_password: password
+        p_password: password,
+        p_admin_password: this.ADMIN_REGISTER_KEY
       });
     }
     return this.request("/api/register", {
