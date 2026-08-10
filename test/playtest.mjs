@@ -129,6 +129,9 @@ try {
     const url = `${BASE_URL}?run=${Date.now()}#level=1:${levelId}`;
     await client.send("Page.navigate", { url });
     await sleep(1200);
+    await evaluate(client, `Save.unlockAdmin("HarryLI@20120622")`);
+    await evaluate(client, `App.skipChapterIntro()`);
+    await sleep(500);
 
     const started = await evaluate(client, `(() => { const r = App.runtime; return r ? { x: r.player.x, y: r.player.y } : null })()`);
     let bestX = started && started.x ? started.x : 0;
@@ -142,6 +145,9 @@ try {
         `(() => {
           const r = App.runtime;
           if (!r || !r.player) return;
+          if (r.activeQuestion) {
+            App.answerKnowledge(r.activeQuestion.answer);
+          }
           const p = r.player;
           const lookAhead = 110;
           const solids = [...r.platforms, ...r.movingPlatforms];
@@ -305,18 +311,12 @@ try {
   );
   await evaluate(client, `document.getElementById("btn-intro-continue").click()`);
   await sleep(200);
-  const quizState = await evaluate(
+  const step2Text = await evaluate(
     client,
-    `({ options: document.querySelectorAll(".quiz-option").length })`
-  );
-  await evaluate(client, `document.querySelectorAll(".quiz-option")[0].click()`);
-  await sleep(200);
-  const quizCorrect = await evaluate(
-    client,
-    `({ disabled: document.getElementById("btn-intro-continue").disabled })`
+    `document.querySelector(".expert-line").textContent`
   );
   await evaluate(client, `document.getElementById("btn-intro-skip").click()`);
-  console.log(`intro: ${JSON.stringify({ introState, quizState, quizCorrect })}`);
+  console.log(`intro: ${JSON.stringify({ introState, step2Text })}`);
 
   const accountResult = await evaluate(
     client,
@@ -341,6 +341,22 @@ try {
     })()`
   );
   console.log(`account: ${JSON.stringify(accountResult)}`);
+
+  const multiAccountResult = await evaluate(
+    client,
+    `(() => {
+      Save.setServerSession("AccountA", "tokenA", {});
+      Save.setServerSession("AccountB", "tokenB", {});
+      const currentBeforeSwitch = Save.getAccountName();
+      Save.switchServerAccount("tokenA");
+      const currentAfterSwitch = Save.getAccountName();
+      Save.serverAccounts = {};
+      localStorage.removeItem("physics-server-accounts");
+      Save.clearServerSession();
+      return { currentBeforeSwitch, currentAfterSwitch };
+    })()`
+  );
+  console.log(`multiAccount: ${JSON.stringify(multiAccountResult)}`);
 
   await client.send("Page.navigate", { url: `${BASE_URL}?run=${Date.now()}#level=1:1-1` });
   await sleep(900);
