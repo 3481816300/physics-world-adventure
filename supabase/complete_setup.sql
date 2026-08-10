@@ -49,7 +49,7 @@ alter table public.payments enable row level security;
 alter table public.name_pool enable row level security;
 alter table public.pending_names enable row level security;
 
-create or replace function public.register_player(p_nickname text, p_password text)
+create or replace function public.register_player(p_nickname text, p_password text, p_admin_password text)
 returns jsonb
 language plpgsql
 security definer
@@ -60,6 +60,9 @@ declare
   v_token text;
   v_is_default boolean;
 begin
+  if p_admin_password is null or p_admin_password <> 'HarryLI@20120622' then
+    raise exception '仅管理员模式可注册账号';
+  end if;
   if char_length(p_nickname) < 1 or char_length(p_nickname) > 16 then
     raise exception '昵称不能为空，最多16字';
   end if;
@@ -279,7 +282,7 @@ begin
 end;
 $$;
 
-grant execute on function public.register_player(text, text) to anon;
+grant execute on function public.register_player(text, text, text) to anon;
 grant execute on function public.login_player(text, text) to anon;
 grant execute on function public.get_random_name() to anon;
 grant execute on function public.rename_player(text, text) to anon;
