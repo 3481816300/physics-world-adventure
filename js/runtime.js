@@ -1702,18 +1702,44 @@ class LevelRuntime {
     }
   }
   drawIntroBubble(x, y, text, step) {
-    const ctx = this.ctx; const width = Math.min(440, this.width - 80); const height = 92; const bx = Math.max(20, Math.min(x - width/2, this.width - width - 20)); const by = y - 280;
-    ctx.fillStyle = "rgba(20,27,36,0.9)"; ctx.beginPath(); ctx.roundRect(bx, by, width, height, 14); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.stroke();
-    ctx.fillStyle = "#fff"; ctx.font = "13px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "left"; this.wrapIntroText(ctx, text, bx+14, by+24, width-28, 22);
-    if (step.type === "choice") { ctx.fillStyle = "#ffd166"; ctx.font = "12px 'Microsoft YaHei', sans-serif"; step.options.forEach((option,i)=>ctx.fillText(`${i+1}. ${option}`, bx+14, by+70+i*16)); }
-    else if (step.type === "formula") {
-      ctx.fillStyle = "#2fd6c3"; ctx.font = "13px 'Microsoft YaHei', sans-serif"; ctx.fillText(step.slots.join(" "), bx+14, by+74);
-      ctx.fillStyle = "#fff"; ctx.font = "11px 'Microsoft YaHei', sans-serif"; step.options.forEach((option,i)=>ctx.fillText(`${i+1}. ${option}`, bx+180+i*56, by+74));
+    const ctx = this.ctx;
+    const hasOptions = step.type === "choice" || step.type === "formula";
+    const width = Math.min(480, this.width - 72);
+    const height = hasOptions ? 172 : 116;
+    const bx = Math.max(20, Math.min(x - width / 2, this.width - width - 20));
+    const by = y - 320;
+    ctx.fillStyle = "rgba(16, 22, 30, 0.94)";
+    ctx.beginPath(); ctx.roundRect(bx, by, width, height, 18); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 9, by + height); ctx.lineTo(x, by + height + 13); ctx.lineTo(x + 9, by + height); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "15px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "left";
+    this.wrapIntroText(ctx, text, bx + 18, by + 32, width - 36, 24);
+    this.wrapIntroText(ctx, text, bx + 18, by + 32, width - 36, 24, 2);
+    if (step.type === "choice") {
+      ctx.fillStyle = "#ffd166"; ctx.font = "13px 'Microsoft YaHei', sans-serif";
+      step.options.forEach((option, i) => {
+        ctx.fillText(`${i + 1}. ${option}`, bx + 20, by + height - 56 + i * 24);
+      });
+    } else if (step.type === "formula") {
+      ctx.fillStyle = "#2fd6c3"; ctx.font = "15px 'Microsoft YaHei', sans-serif";
+      ctx.fillText(step.slots.join(" "), bx + 20, by + height - 78);
+      ctx.fillStyle = "#fff"; ctx.font = "12px 'Microsoft YaHei', sans-serif";
+      const stepW = Math.min(56, (width - 40) / step.options.length);
+      step.options.forEach((option, i) => ctx.fillText(`${i + 1}. ${option}`, bx + 20 + i * stepW, by + height - 42));
     }
   }
   wrapIntroText(ctx, text, x, y, maxWidth, lineHeight) {
     const chars = Array.from(text); let line = ""; let currentY = y;
-    for (const char of chars) { const test = line + char; if (ctx.measureText(test).width > maxWidth && line) { ctx.fillText(line,x,currentY); line = char; currentY += lineHeight; } else line = test; }
+    const maxLines = arguments[6] || 4;
+    let lines = 0;
+    for (const char of chars) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, currentY);
+        lines += 1; line = char; currentY += lineHeight;
+        if (lines >= maxLines) return;
+      } else line = test;
+    }
     if (line) ctx.fillText(line, x, currentY);
   }
 
