@@ -88,6 +88,10 @@ class LevelRuntime {
     }));
     this.switches = cloneList(def.switches).map((item) => ({ ...item, active: false, latched: false }));
     this.doors = cloneList(def.doors).map((item) => ({ ...item, open: item.open || false }));
+    this.questionGates = cloneList(def.questionGates || []).map((gate) => ({ ...gate, solved: false }));
+    this.activeQuestion = null;
+    this.currentGravityLabel = "地球";
+    this.currentGravityScale = 1;
     this.spikes = cloneList(def.spikes);
     this.springs = cloneList(def.springs);
     this.launchPads = cloneList(def.launchPads);
@@ -211,6 +215,12 @@ class LevelRuntime {
     this.deathTimer = 0;
     this.deathParticles = [];
     this.shake = 0;
+    this.activeQuestion = null;
+    if (this.questionGates) {
+      for (const gate of this.questionGates) {
+        if (!gate.solved) gate.wrongCount = 0;
+      }
+    }
     this.player = {
       x: start.x,
       y: start.y,
@@ -279,7 +289,11 @@ class LevelRuntime {
 
   update(dt, input) {
     const frame = Math.min(dt, 1 / 30);
-    if (!this.player) return;
+    if (!this.player && !this.intro) return;
+    if (this.intro) {
+      this.updateIntro(frame, input);
+      return;
+    }
 
     if (this.completed) {
       this.celebrationTime += frame;
@@ -345,9 +359,14 @@ class LevelRuntime {
         centerY < zone.y + zone.h
       ) {
         gravityScale = zone.scale;
+        this.currentGravityLabel = zone.label || "特殊区域";
         break;
       }
     }
+    if (gravityScale === 1) {
+      this.currentGravityLabel = "地球";
+    }
+    this.currentGravityScale = gravityScale;
 
     player.vy += 1500 * gravityScale * gravityModifier * frame;
     player.vy = Math.min(player.vy, 1000);
@@ -367,6 +386,7 @@ class LevelRuntime {
     }
     player.crouch = crouch;
 
+    this.updateQuestionGates(input);
     this.collideWithPlatforms(frame, moveDirection);
     this.applySprings();
     this.applyLaunchPads();
@@ -419,6 +439,11 @@ class LevelRuntime {
     for (const platform of this.movingPlatforms) {
       const current = { ...platform, moving: true };
       solids.push(current);
+    }
+    for (const door of this.doors) {
+      if (!door.open) {
+        solids.push({ ...door, kind: "door", moving: false, dx: 0, dy: 0 });
+      }
     }
 
     for (const platform of solids) {
@@ -570,6 +595,40 @@ class LevelRuntime {
     }
   }
 
+  updateQuestionGates(input) {
+    if (!this.activeQuestion) {
+      for (const gate of this.questionGates) {
+        if (!gate.solved && this.overlap(this.player, gate)) {
+          this.activeQuestion = gate;
+          this.callbacks.onQuestion && this.callbacks.onQuestion(gate);
+          break;
+        }
+      }
+    }
+
+  }
+
+  answerQuestion(selected) {
+    const gate = this.activeQuestion;
+    if (!gate) return false;
+    if (selected === gate.answer) {
+      gate.solved = true;
+      const door = this.doors.find((item) => item.id === gate.doorId);
+      if (door) door.open = true;
+      this.activeQuestion = null;
+      this.callbacks.onToast && this.callbacks.onToast("定律掌握，通路已开启");
+      this.callbacks.onQuestionAnswered && this.callbacks.onQuestionAnswered(true);
+      return true;
+    }
+    this.callbacks.onQuestionAnswered && this.callbacks.onQuestionAnswered(false);
+    gate.wrongCount = (gate.wrongCount || 0) + 1;
+    if (gate.wrongCount >= 2) {
+      this.activeQuestion = null;
+      this.startDeath();
+    }
+    return false;
+  }
+
   updateSpikes() {
     for (const spike of this.spikes) {
       if (this.overlap(this.player, spike)) {
@@ -667,6 +726,14 @@ class LevelRuntime {
     const player = this.player;
     const centerX = player.x + player.w / 2;
     const centerY = player.y + player.h / 2;
+
+    for (const gate of this.questionGates) {
+      if (!gate.solved && this.overlap(this.player, gate)) {
+        this.activeQuestion = gate;
+        this.callbacks.onToast && this.callbacks.onToast("按下 1/2/3 选择答案");
+        return;
+      }
+    }
 
     if (Math.hypot(this.core.x - centerX, this.core.y - centerY) < 70) {
       this.completeLevel();
@@ -771,8 +838,15 @@ class LevelRuntime {
   render() {
     const ctx = this.ctx;
     const accent = this.chapter ? this.chapter.accent : "#2fd6c3";
+    if (this.intro) {
+      this.renderIntro();
+      return;
+    }
     ctx.save();
-    ctx.clearRect(0, 0, this.width, this.height);
+    const scale = this.canvas.width / this.width;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
     const sky = ctx.createLinearGradient(0, 0, 0, this.height);
     sky.addColorStop(0, "#101820");
@@ -791,6 +865,7 @@ class LevelRuntime {
     this.drawSprings();
     this.drawLaunchPads();
     this.drawSwitches();
+    this.drawQuestionGates();
     this.drawDoors(accent);
     this.drawSpikes();
     this.drawBoxes();
@@ -863,7 +938,7 @@ class LevelRuntime {
         return;
       }
 
-      const color = platform.kind === "ice" ? "#aee9ff" : platform.kind === "sand" ? "#d7b878" : accent;
+      const color = platform.kind === "ice" ? "#aee9ff" : platform.kind === "sand" ? "#d7b878" : platform.kind === "moon" ? "#c8d3dc" : platform.kind === "mars" ? "#b96a4b" : platform.kind === "ceiling" ? "rgba(30,40,52,0.9)" : "#5d8f63";
       ctx.fillStyle = color;
       ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
       ctx.fillStyle = "rgba(255,255,255,0.28)";
@@ -918,9 +993,105 @@ class LevelRuntime {
     }
   }
 
+  drawQuestionGates() {
+    const ctx = this.ctx;
+    for (const gate of this.questionGates) {
+      if (gate.solved) {
+        ctx.strokeStyle = "rgba(123,216,143,0.35)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(gate.x, gate.y, gate.w, gate.h);
+        continue;
+      }
+      const cx = gate.x + gate.w / 2;
+      const gradient = ctx.createLinearGradient(gate.x, gate.y, gate.x + gate.w, gate.y);
+      gradient.addColorStop(0, "rgba(76,124,255,0.18)");
+      gradient.addColorStop(0.5, "rgba(160,190,255,0.42)");
+      gradient.addColorStop(1, "rgba(76,124,255,0.18)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(gate.x, gate.y, gate.w, gate.h);
+      ctx.strokeStyle = "rgba(180,210,255,0.6)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(gate.x + 2, gate.y + 2, gate.w - 4, gate.h - 4);
+      const waveY = gate.y + ((this.elapsed * 70 + gate.x) % gate.h);
+      ctx.fillStyle = "rgba(255,255,255,0.28)";
+      ctx.fillRect(gate.x + 4, waveY, gate.w - 8, 26);
+      ctx.save();
+      ctx.globalAlpha = 0.55 + Math.sin(this.elapsed * 4) * 0.25;
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 24px 'Microsoft YaHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("?", cx, gate.y + 70);
+      ctx.fillText("知识屏障", cx, gate.y + 106);
+      ctx.restore();
+      for (let i = 0; i < 4; i += 1) {
+        const py = gate.y + ((i * 213 + this.elapsed * 36) % gate.h);
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(gate.x + 8 + (i % 2) * 6, py, 3, 3);
+      }
+  }
+  }
+
+  drawQuestionPanel() {
+    if (!this.activeQuestion) return;
+    const ctx = this.ctx;
+    const gate = this.activeQuestion;
+    ctx.fillStyle = "rgba(10,14,18,0.78)";
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const panelX = this.width / 2 - 300;
+    const panelY = this.height / 2 - 150;
+    ctx.fillStyle = "#222a35";
+    ctx.fillRect(panelX, panelY, 600, 300);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, 600, 300);
+
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "700 18px 'Microsoft YaHei', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("知识校验：请用刚学到的定律作答", this.width / 2, panelY + 34);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "15px 'Microsoft YaHei', sans-serif";
+    this.wrapText(ctx, gate.question, panelX + 30, panelY + 80, 540, 24);
+
+    gate.options.forEach((option, index) => {
+      const y = panelY + 140 + index * 42;
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.fillRect(panelX + 30, y, 540, 34);
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.strokeRect(panelX + 30, y, 540, 34);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.fillText(`${index + 1}. ${option}`, panelX + 44, y + 23);
+    });
+
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.textAlign = "center";
+    ctx.fillText("按数字键 1 / 2 / 3 选择答案", this.width / 2, panelY + 280);
+  }
+
+  wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+    const chars = Array.from(text);
+    let line = "";
+    let currentY = y;
+    for (const char of chars) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, currentY);
+        line = char;
+        currentY += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, x, currentY);
+  }
+
   drawDoors(accent) {
     const ctx = this.ctx;
     for (const door of this.doors) {
+      if (this.questionGates.some((gate) => gate.doorId === door.id)) continue;
       if (door.open) {
         ctx.strokeStyle = "rgba(123,216,143,0.75)";
         ctx.lineWidth = 3;
@@ -1397,7 +1568,7 @@ class LevelRuntime {
     const ctx = this.ctx;
     const player = this.player;
     ctx.fillStyle = "rgba(10,14,18,0.66)";
-    ctx.fillRect(0, 0, this.width, 44);
+    ctx.fillRect(0, 0, this.width, 62);
     ctx.fillStyle = "#fff";
     ctx.font = "700 15px 'Microsoft YaHei', sans-serif";
     ctx.textAlign = "center";
@@ -1405,6 +1576,15 @@ class LevelRuntime {
     ctx.fillStyle = "rgba(255,255,255,0.6)";
     ctx.font = "11px 'Microsoft YaHei', sans-serif";
     ctx.fillText(`时间 ${Math.floor(this.elapsed)}s · 死亡 ${this.deaths} 次`, this.width / 2, 35);
+
+    const currentG = this.currentGravityLabel === "月球" ? 1.63 : this.currentGravityLabel === "火星" ? 3.71 : 9.8;
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "12px 'Microsoft YaHei', sans-serif";
+    ctx.fillText(
+      `当前区域：${this.currentGravityLabel} · g≈${currentG} N/kg · 质量 50kg · 重量 ${(50 * currentG).toFixed(1)}N`,
+      this.width / 2,
+      52
+    );
 
     if (this.completed) {
       ctx.fillStyle = "#ffd166";
@@ -1425,6 +1605,116 @@ class LevelRuntime {
       ctx.fillText(`HP ${this.hearts}/10`, 12, 80);
       ctx.fillText(`FRAGMENT ${this.fragmentFound}`, 12, 96);
     }
+  }
+
+  startIntro(chapter, levelMeta, steps, onDone) {
+    this.chapter = chapter;
+    this.levelMeta = levelMeta;
+    this.level = getLevelDef(chapter.id, levelMeta.id);
+    this.player = null;
+    this.completed = false;
+    this.loadSprites();
+    if (!this.newtonImage) {
+      this.newtonImage = new Image();
+      this.newtonImage.src = NEWTON_SPRITE;
+    }
+    this.intro = { chapter, levelMeta, steps, index: 0, onDone, elapsed: 0, newtonX: 660, playerX: 420, playerY: 700, newtonY: 690, formulaIndex: 0, formulaWrong: 0, done: false };
+  }
+  finishIntro() {
+    const intro = this.intro;
+    if (!intro) return;
+    this.intro = null;
+    if (intro.onDone) intro.onDone();
+  }
+  updateIntro(frame, input) {
+    const intro = this.intro;
+    intro.elapsed += frame;
+    const step = intro.steps[intro.index];
+    if (!step) { this.finishIntro(); return; }
+    if (step.type === "choice") {
+      for (let i = 1; i <= 3; i += 1) {
+        if (input.wasPressed(`Digit${i}`) || input.wasPressed(`Numpad${i}`)) {
+          if (step.answer === null || i - 1 === step.answer) this.advanceIntro();
+          else this.callbacks.onToast && this.callbacks.onToast("再想想看");
+          return;
+        }
+      }
+    } else if (step.type === "formula") {
+      for (let i = 1; i <= 5; i += 1) {
+        if (input.wasPressed(`Digit${i}`) || input.wasPressed(`Numpad${i}`)) {
+          const selected = step.options[i - 1];
+          if (selected === step.answers[intro.formulaIndex]) {
+            intro.formulaIndex += 1; intro.formulaWrong = 0;
+            if (intro.formulaIndex >= step.answers.length) this.advanceIntro();
+          } else {
+            intro.formulaWrong += 1;
+            if (intro.formulaWrong >= 2) { intro.formulaIndex = 0; intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则重置"); }
+            else this.callbacks.onToast && this.callbacks.onToast("符号位置不对");
+          }
+          return;
+        }
+      }
+    } else {
+      if (input.wasPressed("Space") || input.wasPressed("Enter")) this.advanceIntro();
+    }
+    intro.newtonX = 640 + Math.sin(intro.elapsed * 1.4) * 12;
+    intro.playerX = 420 + Math.sin(intro.elapsed * 0.9) * 6;
+  }
+  advanceIntro() {
+    const intro = this.intro;
+    intro.index += 1; intro.formulaIndex = 0; intro.formulaWrong = 0;
+    if (intro.index >= intro.steps.length) this.finishIntro();
+  }
+  renderIntro() {
+    const ctx = this.ctx; const scale = this.canvas.width / this.width;
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,this.canvas.width,this.canvas.height); ctx.setTransform(scale,0,0,scale,0,0);
+    const step = this.intro.steps[this.intro.index] || {}; const scene = step.scene || "earth";
+    const sky = ctx.createLinearGradient(0,0,0,this.height);
+    if (scene === "moon") { sky.addColorStop(0,"#0b1020"); sky.addColorStop(1,"#2d3542"); }
+    else if (scene === "mars") { sky.addColorStop(0,"#2a0f12"); sky.addColorStop(1,"#6b3a2f"); }
+    else { sky.addColorStop(0,"#7cc6e8"); sky.addColorStop(1,"#b7e0a3"); }
+    ctx.fillStyle = sky; ctx.fillRect(0,0,this.width,this.height);
+    ctx.fillStyle = scene === "moon" ? "#aeb6bd" : scene === "mars" ? "#a04b35" : "#5d8f63"; ctx.fillRect(0,780,this.width,120);
+    this.drawIntroDecor(scene);
+    this.drawIntroPerson(this.intro.playerX, this.intro.playerY, "player", step.frame);
+    this.drawIntroPerson(this.intro.newtonX, this.intro.newtonY, "newton", step.frame);
+    const speaker = step.speaker || "牛顿";
+    const x = speaker === "玩家" ? this.intro.playerX : this.intro.newtonX;
+    const y = speaker === "玩家" ? this.intro.playerY : this.intro.newtonY;
+    this.drawIntroBubble(x, y, step.text || "", step);
+    ctx.fillStyle = "rgba(255,255,255,0.65)"; ctx.font = "12px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(step.type === "choice" ? "按数字键 1/2/3 选择" : step.type === "formula" ? "按数字键选择符号" : "按空格继续", this.width / 2, this.height - 16);
+    ctx.restore();
+  }
+  drawIntroDecor(scene) {
+    const ctx = this.ctx;
+    if (scene === "earth") { ctx.fillStyle = "#3d5a3f"; ctx.fillRect(80,600,140,180); ctx.fillStyle = "#d94f3d"; ctx.beginPath(); ctx.arc(140,590,16,0,Math.PI*2); ctx.fill(); ctx.fillStyle = "#7ec850"; ctx.beginPath(); ctx.arc(120,570,24,0,Math.PI*2); ctx.arc(180,580,20,0,Math.PI*2); ctx.fill(); }
+    else if (scene === "moon") { ctx.fillStyle = "#87929b"; ctx.beginPath(); ctx.arc(760,560,70,0,Math.PI*2); ctx.fill(); ctx.fillStyle = "#626d76"; ctx.beginPath(); ctx.arc(740,540,14,0,Math.PI*2); ctx.arc(790,585,9,0,Math.PI*2); ctx.fill(); }
+    else { ctx.fillStyle = "#7a4a36"; ctx.beginPath(); ctx.moveTo(180,800); ctx.lineTo(280,500); ctx.lineTo(380,800); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#b85a3d"; ctx.beginPath(); ctx.moveTo(520,800); ctx.lineTo(620,560); ctx.lineTo(720,800); ctx.closePath(); ctx.fill(); }
+  }
+  drawIntroPerson(x, y, who, frameId) {
+    const ctx = this.ctx;
+    if (who === "player" && this.characterSpriteLoaded) { ctx.drawImage(this.characterSprite, 0, 0, 64, 64, x - 60, y - 120, 120, 120); return; }
+    if (who === "newton" && this.newtonImage && this.newtonImage.complete) {
+      const frame = (NEWTON_FRAMES.find((item) => item.id === frameId) || NEWTON_FRAMES[0]).index;
+      const col = (frame - 1) % NEWTON_FRAME_COLS; const row = Math.floor((frame - 1) / NEWTON_FRAME_COLS);
+      ctx.drawImage(this.newtonImage, col * NEWTON_FRAME_W, row * NEWTON_FRAME_H, NEWTON_FRAME_W, NEWTON_FRAME_H, x - 80, y - 160, 160, 260);
+    }
+  }
+  drawIntroBubble(x, y, text, step) {
+    const ctx = this.ctx; const width = Math.min(440, this.width - 80); const height = 92; const bx = Math.max(20, Math.min(x - width/2, this.width - width - 20)); const by = y - 280;
+    ctx.fillStyle = "rgba(20,27,36,0.9)"; ctx.beginPath(); ctx.roundRect(bx, by, width, height, 14); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "13px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "left"; this.wrapIntroText(ctx, text, bx+14, by+24, width-28, 22);
+    if (step.type === "choice") { ctx.fillStyle = "#ffd166"; ctx.font = "12px 'Microsoft YaHei', sans-serif"; step.options.forEach((option,i)=>ctx.fillText(`${i+1}. ${option}`, bx+14, by+70+i*16)); }
+    else if (step.type === "formula") {
+      ctx.fillStyle = "#2fd6c3"; ctx.font = "13px 'Microsoft YaHei', sans-serif"; ctx.fillText(step.slots.join(" "), bx+14, by+74);
+      ctx.fillStyle = "#fff"; ctx.font = "11px 'Microsoft YaHei', sans-serif"; step.options.forEach((option,i)=>ctx.fillText(`${i+1}. ${option}`, bx+180+i*56, by+74));
+    }
+  }
+  wrapIntroText(ctx, text, x, y, maxWidth, lineHeight) {
+    const chars = Array.from(text); let line = ""; let currentY = y;
+    for (const char of chars) { const test = line + char; if (ctx.measureText(test).width > maxWidth && line) { ctx.fillText(line,x,currentY); line = char; currentY += lineHeight; } else line = test; }
+    if (line) ctx.fillText(line, x, currentY);
   }
 
   dispose() {
