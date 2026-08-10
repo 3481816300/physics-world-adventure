@@ -26,6 +26,7 @@ const UI = {
   confirmDeleteTimer: null,
 
   init() {
+    this.newtonAnimator = null;
     this.refs = {
       ambientCanvas: document.getElementById("ambientCanvas"),
       gameCanvas: document.getElementById("gameCanvas"),
@@ -75,6 +76,10 @@ const UI = {
       firstRunOptions: document.getElementById("firstRunOptions"),
       firstRunError: document.getElementById("firstRunError"),
       onboardingModal: document.getElementById("onboardingModal"),
+      contactModal: document.getElementById("contactModal"),
+      contactContent: document.getElementById("contactContent"),
+      devSupportModal: document.getElementById("devSupportModal"),
+      devSupportChapter: document.getElementById("devSupportChapter"),
       registerModal: document.getElementById("registerModal"),
       registerNickname: document.getElementById("registerNickname"),
       registerPassword: document.getElementById("registerPassword"),
@@ -84,6 +89,15 @@ const UI = {
       loginNickname: document.getElementById("loginNickname"),
       loginPassword: document.getElementById("loginPassword"),
       loginError: document.getElementById("loginError"),
+      passwordModal: document.getElementById("passwordModal"),
+      passwordOld: document.getElementById("passwordOld"),
+      passwordNew: document.getElementById("passwordNew"),
+      passwordConfirm: document.getElementById("passwordConfirm"),
+      passwordModalError: document.getElementById("passwordModalError"),
+      knowledgeModal: document.getElementById("knowledgeModal"),
+      knowledgeQuestion: document.getElementById("knowledgeQuestion"),
+      knowledgeOptions: document.getElementById("knowledgeOptions"),
+      knowledgeNewtonCanvas: document.getElementById("knowledgeNewtonCanvas"),
       backgroundModal: document.getElementById("backgroundModal"),
       backgroundText: document.getElementById("backgroundText"),
       chapterIntroModal: document.getElementById("chapterIntroModal"),
@@ -92,10 +106,15 @@ const UI = {
       expertTitle: document.getElementById("expertTitle"),
       expertQuote: document.getElementById("expertQuote"),
       expertContent: document.getElementById("expertContent"),
+      newtonCanvas: document.getElementById("newtonCanvas"),
       endPoemModal: document.getElementById("endPoemModal"),
       endPoemText: document.getElementById("endPoemText"),
       btnSimulateComplete: document.getElementById("btn-simulate-complete")
     };
+    this.newtonAnimator = new NewtonAnimator(this.refs.newtonCanvas);
+    this.newtonAnimator.load();
+    this.knowledgeNewtonAnimator = new NewtonAnimator(this.refs.knowledgeNewtonCanvas);
+    this.knowledgeNewtonAnimator.load();
   },
 
   show(screenName) {
@@ -186,11 +205,12 @@ const UI = {
     article.style.left = `${position.x}px`;
     article.style.top = `${position.y}px`;
 
+    const underDevelopment = !isFinal && chapter.levels.every((level) => level.placeholder);
     const unlocked = isFinal ? Save.isFinalUnlocked() : Save.isChapterUnlocked(chapter);
     const completed = isFinal ? Save.isChapterCompleted(FINAL_CHAPTER) : Save.isChapterCompleted(chapter);
-    article.classList.toggle("is-unlocked", unlocked);
+    article.classList.toggle("is-unlocked", unlocked || underDevelopment);
     article.classList.toggle("is-completed", completed);
-    article.classList.toggle("is-locked", !unlocked);
+    article.classList.toggle("is-locked", !unlocked && !underDevelopment);
 
     const button = document.createElement("button");
     button.className = "map-node-button";
@@ -200,14 +220,18 @@ const UI = {
 
     const label = document.createElement("div");
     label.className = "map-node-label";
-    label.textContent = isFinal
+    label.innerHTML = isFinal
       ? "熵之终章——最终试炼"
-      : `${chapter.id}. ${chapter.artName}——${chapter.subject}`;
+      : `${chapter.id}. ${chapter.artName}——${chapter.subject}${underDevelopment ? "<br><b>开发中 · 请我喝咖啡</b>" : ""}`;
 
     article.appendChild(button);
     article.appendChild(label);
 
     article.addEventListener("click", () => {
+      if (underDevelopment && !Save.isAdmin()) {
+        UI.openDevSupport(chapter);
+        return;
+      }
       if (!unlocked) {
         UI.showToast("请先完成上一章的章节 Boss");
         return;
@@ -246,13 +270,16 @@ const UI = {
         const record = Save.getLevelRecord(level.id);
         const actualTime = record ? record.elapsed : 0;
         const estimatedTime = Save.getEstimatedTime(level.id);
-        meta.textContent = `已稳定 · ${Save.getStarCount(level.id)}/5 星 · ${this.formatTime(actualTime)}/${this.formatTime(estimatedTime)}`;
+        const bestTime = record ? record.elapsed : 0;
+        meta.textContent = `已稳定 · ${Save.getStarCount(level.id)}/5 星 · 最佳 ${this.formatTime(bestTime)}`;
       } else {
         meta.textContent = unlocked
           ? "可进入"
           : Save.data.difficulty === "hell" && level.role === "教学关"
             ? "炼狱模式已移除"
-            : "未解锁";
+            : Save.isGuest()
+              ? "登录账号解锁"
+              : "未解锁";
       }
 
       card.appendChild(title);
@@ -261,7 +288,7 @@ const UI = {
 
       card.addEventListener("click", () => {
         if (!unlocked) {
-          UI.showToast("请先完成前一关");
+          UI.showToast(Save.isGuest() ? "游客模式仅可试玩第一章第一关，登录账号解锁完整内容" : "请先完成前一关");
           return;
         }
         App.startLevel(chapter.id, level.id, isFinal);
@@ -381,6 +408,12 @@ const UI = {
   },
 
   animateCharacterPreviews(dt) {
+    if (this.newtonAnimator) {
+      this.newtonAnimator.update(dt);
+    }
+    if (this.knowledgeNewtonAnimator) {
+      this.knowledgeNewtonAnimator.update(dt);
+    }
     for (const preview of this.characterPreviews) {
       if (!preview.loaded) continue;
       preview.timer += dt;
@@ -459,13 +492,13 @@ const UI = {
       card.className = "account-card";
       card.innerHTML = `
         <h3>游客模式</h3>
-        <p class="modal-copy">当前模式下不会保存游戏记录，关闭浏览器后记录会被清除。</p>
+        <p class="modal-copy">当前模式下不会保存游戏记录，只能试玩第一章第一关。登录账号可解锁完整内容。</p>
         <div class="account-actions">
-          <button id="btn-account-register" class="btn btn-primary" type="button">注册账号</button>
+          <button id="btn-account-contact" class="btn btn-primary" type="button">联系开发者获取账号</button>
           <button id="btn-account-login" class="btn btn-ghost" type="button">登录账号</button>
         </div>
       `;
-      card.querySelector("#btn-account-register").addEventListener("click", () => UI.openRegister());
+      card.querySelector("#btn-account-contact").addEventListener("click", () => UI.openContact());
       card.querySelector("#btn-account-login").addEventListener("click", () => UI.openLogin());
       panel.appendChild(card);
       this.renderSavedAccounts(panel);
@@ -484,18 +517,11 @@ const UI = {
       <div class="account-actions" style="margin-top:14px">
         <button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>
         <button id="btn-account-switch" class="btn btn-ghost" type="button">登录另一个账号</button>
-        <button id="btn-account-register-another" class="btn btn-ghost" type="button">注册另一个账号</button>
+        ${Save.isAdmin() ? '<button id="btn-account-register-another" class="btn btn-ghost" type="button">注册另一个账号（管理员）</button>' : '<button id="btn-account-contact" class="btn btn-ghost" type="button">联系开发者获取账号</button>'}
       </div>
-      <div class="password-section">
-        <h4>修改密码</h4>
-        <input id="oldPassword" class="text-input" type="password" placeholder="原密码">
-        <input id="newPassword" class="text-input" type="password" placeholder="新密码（至少 4 位）">
-        <input id="newPasswordConfirm" class="text-input" type="password" placeholder="确认新密码">
-        <div class="account-actions">
-          <button id="btn-change-password" class="btn btn-primary" type="button">修改密码</button>
-          <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
-        </div>
-        <p class="modal-error" id="passwordMessage" hidden></p>
+      <div class="account-actions" style="margin-top:14px">
+        <button id="btn-open-password" class="btn btn-primary" type="button">修改密码</button>
+        <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
       </div>
     `;
     card.querySelector("#btn-save-nickname").addEventListener("click", () => {
@@ -503,14 +529,15 @@ const UI = {
     });
     card.querySelector("#btn-account-logout").addEventListener("click", () => App.logoutAccount());
     card.querySelector("#btn-account-switch").addEventListener("click", () => UI.openLogin());
-    card.querySelector("#btn-account-register-another").addEventListener("click", () => UI.openRegister());
-    card.querySelector("#btn-change-password").addEventListener("click", () => {
-      App.changePassword(
-        card.querySelector("#oldPassword").value,
-        card.querySelector("#newPassword").value,
-        card.querySelector("#newPasswordConfirm").value
-      );
-    });
+    const registerAnother = card.querySelector("#btn-account-register-another");
+    if (registerAnother) {
+      registerAnother.addEventListener("click", () => UI.openRegister());
+    }
+    const contact = card.querySelector("#btn-account-contact");
+    if (contact) {
+      contact.addEventListener("click", () => UI.openContact());
+    }
+    card.querySelector("#btn-open-password").addEventListener("click", () => UI.openPasswordModal());
     card.querySelector("#btn-view-password").addEventListener("click", () => App.viewPassword());
     panel.appendChild(card);
     this.renderSavedAccounts(panel);
@@ -626,7 +653,48 @@ const UI = {
     }, 200);
   },
 
+  openContact() {
+    const channels = [
+      "📩 咨询邮箱：3481816300@qq.com",
+      "💬 咨询微信：15156525860",
+      "💬 咨询QQ：3481816300",
+      "暂不支持电话咨询，敬请谅解"
+    ];
+    this.refs.contactContent.innerHTML = `
+      <p>本游戏为商业付费游戏。如需获取完整版本、了解售价、购买流程或授权范围，请通过官方渠道咨询。</p>
+      ${channels.map((channel) => `<div class="contact-channel">${channel}</div>`).join("")}
+      <p>请简要说明你的需求，例如：个人使用 / 团队使用、设备平台等，方便我快速为你解答。</p>
+      <p>所有付费相关仅通过官方渠道沟通，不存在其他代理；请确认沟通对象为本人后再进行后续操作，谨防诈骗。</p>
+    `;
+    this.refs.contactModal.hidden = false;
+    requestAnimationFrame(() => this.refs.contactModal.classList.add("is-open"));
+  },
+
+  hideContact() {
+    this.refs.contactModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.contactModal.hidden = true;
+    }, 200);
+  },
+
+  openDevSupport(chapter) {
+    this.refs.devSupportChapter.textContent = `${chapter.artName}——${chapter.subject} 正在开发中`;
+    this.refs.devSupportModal.hidden = false;
+    requestAnimationFrame(() => this.refs.devSupportModal.classList.add("is-open"));
+  },
+
+  hideDevSupport() {
+    this.refs.devSupportModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.devSupportModal.hidden = true;
+    }, 200);
+  },
+
   openRegister() {
+    if (!Save.isAdmin()) {
+      UI.openContact();
+      return;
+    }
     this.refs.registerModal.hidden = false;
     this.refs.registerError.hidden = true;
     this.refs.registerPassword.value = "";
@@ -662,6 +730,58 @@ const UI = {
     }, 200);
   },
 
+  openPasswordModal() {
+    this.refs.passwordOld.value = "";
+    this.refs.passwordNew.value = "";
+    this.refs.passwordConfirm.value = "";
+    this.refs.passwordModalError.hidden = true;
+    this.refs.passwordModal.hidden = false;
+    requestAnimationFrame(() => this.refs.passwordModal.classList.add("is-open"));
+  },
+
+  hidePasswordModal() {
+    this.refs.passwordModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.passwordModal.hidden = true;
+    }, 200);
+  },
+
+  openKnowledgeQuestion(gate) {
+    this.refs.knowledgeQuestion.textContent = gate.question;
+    if (this.knowledgeNewtonAnimator) {
+      this.knowledgeNewtonAnimator.setFrame("space-idle");
+    }
+    const container = this.refs.knowledgeOptions;
+    container.innerHTML = "";
+    gate.options.forEach((option, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "knowledge-option";
+      button.innerHTML = `<span class="option-key">${index + 1}</span><span>${option}</span>`;
+      button.addEventListener("click", () => App.answerKnowledge(index));
+      container.appendChild(button);
+    });
+    this.refs.knowledgeModal.hidden = false;
+    requestAnimationFrame(() => this.refs.knowledgeModal.classList.add("is-open"));
+  },
+
+  closeKnowledgeQuestion() {
+    this.refs.knowledgeModal.classList.remove("is-open");
+    if (this.knowledgeNewtonAnimator) {
+      this.knowledgeNewtonAnimator.setFrame("space-idle");
+    }
+    setTimeout(() => {
+      this.refs.knowledgeModal.hidden = true;
+    }, 200);
+  },
+
+  markKnowledgeAnswer(index, correct) {
+    const button = this.refs.knowledgeOptions.children[index];
+    if (!button) return;
+    button.classList.toggle("is-correct", correct);
+    button.classList.toggle("is-wrong", !correct);
+  },
+
   openBackground() {
     this.refs.backgroundText.innerHTML = BACKGROUND_STORY
       .map((paragraph, index) => `<p style="animation-delay:${index * 120}ms">${paragraph}</p>`)
@@ -677,28 +797,64 @@ const UI = {
     }, 200);
   },
 
-  openChapterIntro(chapter, onDone) {
+  buildGenericSteps(chapter) {
+    const expert = chapter.expert;
+    if (!expert) return [];
+    const steps = expert.lines.map((text) => ({ type: "text", text, frame: "think" }));
+    if (expert.quiz) {
+      steps.push({ type: "choice", text: "牛顿：检验你的理解。", frame: "point-sky", question: expert.quiz.question, options: expert.quiz.options, answer: expert.quiz.answer });
+    }
+    return steps;
+  },
+
+  openChapterIntro(chapter, onDone, level) {
     const expert = chapter.expert;
     if (!expert) {
       onDone && onDone();
       return;
     }
-    this.chapterIntro = { chapter, onDone, step: 0 };
+    this.chapterIntro = {
+      chapter,
+      onDone,
+      step: 0,
+      steps: level && level.id === "1-1" ? [
+        { type: "text", text: "苹果的背叛：牛顿正死死盯着一颗摇摇欲坠的苹果。", frame: "idle-dress" },
+        { type: "text", text: "苹果坠向地面。牛顿问：是什么看不见的手，把它拉向地面？", frame: "apple-smell" },
+        { type: "choice", text: "牛顿：你看见了，告诉我，是什么让苹果落向地面？", frame: "point-sky", question: "你认为，是什么让苹果落向地面的？", options: ["它成熟了，所以掉下来", "地球在吸引它", "它自己想下去"], answer: null },
+        { type: "text", text: "牛顿：假设是地球在作祟。那我们把苹果带到月球，它会怎样？", frame: "walk-1" },
+        { type: "text", text: "月球表面。牛顿：松手吧，看看月亮女神如何对待苹果。", frame: "space-idle" },
+        { type: "choice", text: "苹果缓慢落下。牛顿：你观察到了什么？", frame: "moon-jump", question: "月球上的苹果说明，那股拉它的力量发生了什么变化？", options: ["力量消失了", "力量变小了", "力量变大了"], answer: 1 },
+        { type: "choice", text: "牛顿：你能跳六米高。月球的拉之力大约是地球的几分之一？", frame: "yellow-planet", question: "月球的拉之力大约是地球的几分之一？", options: ["二分之一", "六分之一", "十分之一"], answer: 1 },
+        { type: "text", text: "牛顿：把每单位质量受到的拉之力命名为重力系数 g。地球 g≈9.8，月球 g≈1.63。", frame: "clipboard" },
+        { type: "text", text: "牛顿：为什么地球的 g 这么大？我们去更稳重的火星看看。", frame: "rocket-fire" },
+        { type: "choice", text: "火星表面，三颗大小相同的铁球。牛顿：怎么找出最重的地球货？", frame: "space-walk", question: "三颗铁球手感相同，如何找出最重的那颗？", options: ["逐一捡起，掂量最沉的", "踢得最远的就是", "先生锈的就是"], answer: 0 },
+        { type: "formula", frame: "think", text: "牛顿：质量 m 是物体自己的事，g 是星球的事。把它们拼成重量 G。", formula: { slots: ["G", "=", "__", "×", "__"], answers: ["m", "g"], parts: ["m", "g", "+", "−"] } },
+        { type: "text", text: "牛顿：G = mg！现在解决最后一个问题：这个 g 到底是谁定的？", frame: "clipboard" },
+        { type: "choice", text: "牛顿：万有引力。两个物体之间的引力与什么有关？", frame: "point-sky", question: "两个物体间的万有引力大小，和什么有关？", options: ["和颜色有关", "和质量与距离有关", "只和距离有关"], answer: 1 },
+        { type: "formula", frame: "rocket-up", text: "牛顿：把宇宙密码拼出来。F = [?] × (m₁×m₂) / [??]", formula: { slots: ["F", "=", "__", "×", "(m₁×m₂)", "/", "__"], answers: ["G", "r²"], parts: ["G", "g", "r", "r²", "+"] } },
+        { type: "text", text: "牛顿：F = G×m₁×m₂/r²。质量越大，引力越猛；距离越近，引力越狂。再会，我的搭档。", frame: "idle-dress" }
+      ] : this.buildGenericSteps(chapter),
+    };
     this.refs.expertPortrait.textContent = expert.name.slice(0, 1);
+    if (this.newtonAnimator) {
+      this.newtonAnimator.setFrame("idle-dress");
+    }
     this.refs.expertName.textContent = expert.name;
     this.refs.expertTitle.textContent = expert.title;
     this.refs.expertQuote.textContent = `“${expert.quote}”`;
-    this.refs.expertContent.innerHTML = expert.lines
-      .map((line) => `<p class="expert-line">${line}</p>`)
-      .join("");
+    this.renderCurrentChapterStep(this.chapterIntro.steps[0]);
     document.getElementById("btn-intro-continue").textContent = "继续";
     document.getElementById("btn-intro-continue").disabled = false;
+    document.getElementById("btn-intro-skip").hidden = !Save.isAdmin();
     this.refs.chapterIntroModal.hidden = false;
     requestAnimationFrame(() => this.refs.chapterIntroModal.classList.add("is-open"));
   },
 
   renderChapterQuiz() {
     const expert = this.chapterIntro.chapter.expert;
+    if (this.newtonAnimator) {
+      this.newtonAnimator.setFrame("point-sky");
+    }
     this.refs.expertContent.innerHTML = `
       <div class="quiz-panel">
         <strong>${expert.quiz.question}</strong>
@@ -726,8 +882,107 @@ const UI = {
     });
   },
 
+  advanceChapterIntro() {
+    if (!this.chapterIntro) return;
+    this.chapterIntro.step += 1;
+    const step = this.chapterIntro.steps[this.chapterIntro.step];
+    if (!step) {
+      const callback = this.chapterIntro.onDone;
+      this.hideChapterIntro();
+      this.chapterIntro = null;
+      callback && callback();
+      return;
+    }
+    this.refs.expertContent.innerHTML = `<p class="expert-line">${step.text}</p>`;
+    if (this.newtonAnimator) {
+      this.newtonAnimator.setFrame(step.frame);
+    }
+    const button = document.getElementById("btn-intro-continue");
+    button.textContent = this.chapterIntro.step === this.chapterIntro.steps.length - 1 ? "进入关卡" : "继续";
+    this.renderCurrentChapterStep(step);
+  },
+
+  renderCurrentChapterStep(step) {
+    if (!step) return;
+    if (this.newtonAnimator) {
+      this.newtonAnimator.setFrame(step.frame);
+    }
+    const button = document.getElementById("btn-intro-continue");
+    button.textContent = this.chapterIntro.step === this.chapterIntro.steps.length - 1 ? "进入关卡" : "继续";
+    button.disabled = false;
+
+    if (step.type === "choice") {
+      button.disabled = true;
+      this.refs.expertContent.innerHTML = `
+        <p class="expert-line">${step.text}</p>
+        <div class="quiz-panel">
+          <strong>${step.question}</strong>
+          ${step.options.map((option, index) => `<button type="button" class="quiz-option" data-index="${index}">${option}</button>`).join("")}
+        </div>
+      `;
+      this.refs.expertContent.querySelectorAll(".quiz-option").forEach((option) => {
+        option.addEventListener("click", () => {
+          const index = Number(option.dataset.index);
+          if (step.answer === null || index === step.answer) {
+            option.classList.add("is-correct");
+            this.refs.expertContent.querySelectorAll(".quiz-option").forEach((item) => item.disabled = true);
+            button.disabled = false;
+          } else {
+            option.classList.add("is-wrong");
+            option.disabled = true;
+            UI.showToast("再想想看");
+          }
+        });
+      });
+      return;
+    }
+
+    if (step.type === "formula") {
+      button.disabled = true;
+      const formula = step.formula;
+      const filled = [];
+      this.refs.expertContent.innerHTML = `
+        <p class="expert-line">${step.text}</p>
+        <div class="formula-bench">
+          <div class="formula-line">${formula.slots.map((slot) => `<span class="formula-slot" data-slot="true">${slot}</span>`).join("")}</div>
+          <div class="formula-parts">${formula.parts.map((part) => `<button type="button" class="formula-part" data-part="${part}">${part}</button>`).join("")}</div>
+        </div>
+      `;
+      const slots = Array.from(this.refs.expertContent.querySelectorAll(".formula-slot"));
+      this.refs.expertContent.querySelectorAll(".formula-part").forEach((partButton) => {
+        partButton.addEventListener("click", () => {
+          const index = slots.findIndex((slot) => slot.textContent === "__");
+          if (index < 0) return;
+          slots[index].textContent = partButton.dataset.part;
+          filled[index] = partButton.dataset.part;
+          partButton.disabled = true;
+          const values = formula.slots.map((slot, i) => slots[i].textContent);
+          if (values.every((value) => value !== "__")) {
+            const answersCopy = [...formula.answers];
+            const expected = formula.slots.map((slot) => slot === "__" ? answersCopy.shift() : slot);
+            if (values.every((value, i) => value === expected[i])) {
+              button.disabled = false;
+              UI.showToast("公式成立，法则已铭刻");
+            } else {
+              UI.showToast("符号位置不对，法则仍在扰动");
+              this.refs.expertContent.querySelectorAll(".formula-slot").forEach((slot, i) => slot.textContent = formula.slots[i]);
+              this.refs.expertContent.querySelectorAll(".formula-part").forEach((part) => part.disabled = false);
+              filled.length = 0;
+            }
+          }
+        });
+      });
+      return;
+    }
+
+    this.refs.expertContent.innerHTML = `<p class="expert-line">${step.text}</p>`;
+  },
+
   hideChapterIntro() {
     this.refs.chapterIntroModal.classList.remove("is-open");
+    if (this.newtonAnimator) {
+      this.newtonAnimator.setFrame("idle-dress");
+    }
     setTimeout(() => {
       this.refs.chapterIntroModal.hidden = true;
     }, 200);
