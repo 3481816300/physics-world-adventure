@@ -255,6 +255,7 @@ const Save = {
 
   getVisibleChapters() {
     if (this.isAdmin()) return CHAPTERS;
+    if (!this.isGuest()) return CHAPTERS;
     if (this.data.difficulty === "simple") {
       return CHAPTERS.filter((chapter) => chapter.id <= 9);
     }
@@ -275,13 +276,22 @@ const Save = {
   },
 
   recordLevelResult(levelId, result) {
-    this.data.levelRecords[levelId] = {
+    const previous = this.getLevelRecord(levelId) || {};
+    const candidate = {
       deaths: Number(result.deaths) || 0,
       elapsed: Number(result.elapsed) || 0,
       shards: Number(result.collected) || 0,
       fragment: Boolean(result.fragmentFound),
       parTime: Number(result.parTime) || 300,
       width: Number(result.width) || 1800
+    };
+    this.data.levelRecords[levelId] = {
+      deaths: Math.min(Number(previous.deaths) || 99, candidate.deaths),
+      elapsed: Math.min(Number(previous.elapsed) || Infinity, candidate.elapsed),
+      shards: Math.max(Number(previous.shards) || 0, candidate.shards),
+      fragment: Boolean(previous.fragment || candidate.fragment),
+      parTime: candidate.parTime,
+      width: candidate.width
     };
     this.save();
   },
@@ -327,6 +337,7 @@ const Save = {
 
   isChapterUnlocked(chapter) {
     if (this.isAdmin()) return true;
+    if (!this.isGuest()) return true;
     if (chapter.id === 1) return true;
 
     const previousIndex = CHAPTERS.findIndex((item) => item.id === chapter.id) - 1;
@@ -339,23 +350,21 @@ const Save = {
 
   isFinalUnlocked() {
     if (this.isAdmin()) return true;
+    if (!this.isGuest()) return true;
     const relativity = CHAPTERS.find((chapter) => chapter.id === 13);
     return Boolean(relativity) && this.isChapterCompleted(relativity);
   },
 
   isLevelUnlocked(chapter, level) {
     if (this.isAdmin()) return true;
+    if (this.isGuest()) {
+      return chapter.id === 1 && level.id === "1-1";
+    }
     if (this.data.difficulty === "hell" && level.role === "教学关") return false;
     if (chapter.id === FINAL_CHAPTER.id) {
       return this.isFinalUnlocked();
     }
-    if (!this.isChapterUnlocked(chapter)) return false;
-
-    const index = chapter.levels.findIndex((item) => item.id === level.id);
-    if (index <= 0) return true;
-
-    const previousLevel = chapter.levels[index - 1];
-    return this.isLevelCompleted(previousLevel.id);
+    return true;
   },
 
   getCompletedChapterCount() {
