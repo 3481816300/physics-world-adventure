@@ -36,6 +36,10 @@ const App = {
       onBossDefeated: () => {
         UI.showToast("Boss 已击败，法则核心已可稳定");
       },
+      onQuestion: (gate) => UI.openKnowledgeQuestion(gate),
+      onQuestionAnswered: (correct) => {
+        if (!correct) UI.showToast("答案不对，再想想刚刚学到的定律");
+      },
       onComplete: (result) => {
         if (this.currentLevel) {
           Save.completeLevel(this.currentLevel.id);
@@ -123,13 +127,22 @@ const App = {
     document.getElementById("btn-characters-back").addEventListener("click", () => this.showTitle());
     document.getElementById("btn-account").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-account-back").addEventListener("click", () => this.showTitle());
-    document.getElementById("btn-onboard-register").addEventListener("click", () => UI.openRegister());
+    document.getElementById("btn-onboard-login").addEventListener("click", () => UI.openLogin());
+    document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openContact());
     document.getElementById("btn-onboard-guest").addEventListener("click", () => this.enterGuest());
     document.getElementById("btn-random-name").addEventListener("click", () => this.refreshRandomName());
     document.getElementById("btn-register-submit").addEventListener("click", () => this.registerAccount());
     document.getElementById("btn-register-cancel").addEventListener("click", () => UI.hideRegister());
     document.getElementById("btn-login-submit").addEventListener("click", () => this.loginAccount());
     document.getElementById("btn-login-cancel").addEventListener("click", () => UI.hideLogin());
+    document.getElementById("btn-password-submit").addEventListener("click", () => this.changePassword());
+    document.getElementById("btn-password-cancel").addEventListener("click", () => UI.hidePasswordModal());
+    document.getElementById("btn-login-to-contact").addEventListener("click", () => {
+      UI.hideLogin();
+      UI.openContact();
+    });
+    document.getElementById("btn-contact-close").addEventListener("click", () => UI.hideContact());
+    document.getElementById("btn-support-close").addEventListener("click", () => UI.hideDevSupport());
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-background-skip").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-intro-continue").addEventListener("click", () => this.continueChapterIntro());
@@ -185,6 +198,13 @@ const App = {
       if (this.screen === "game" && !this.paused && (event.code === "Escape" || event.code === "KeyP")) {
         this.togglePause();
       }
+      if (UI.refs.knowledgeModal && !UI.refs.knowledgeModal.hidden) {
+        const index = ["1", "2", "3"].indexOf(event.key);
+        if (index >= 0) {
+          event.preventDefault();
+          this.answerKnowledge(index);
+        }
+      }
     });
   },
 
@@ -227,10 +247,6 @@ const App = {
     UI.hideCompletion();
     const chapter = isFinal ? FINAL_CHAPTER : getChapterById(chapterId);
     if (!chapter) return;
-    if (!isFinal && chapter.expert) {
-      UI.openChapterIntro(chapter, () => this.finishOpenLevels(chapter, false));
-      return;
-    }
     this.finishOpenLevels(chapter, isFinal);
   },
 
@@ -280,6 +296,16 @@ const App = {
     UI.renderAccount();
     UI.setAdminBadges(Save.isAdmin());
     Input.gameActive = false;
+  },
+
+  switchServerAccount(token) {
+    if (!Save.switchServerAccount(token)) return;
+    UI.updateAccountButton();
+    UI.renderDifficultySelector();
+    UI.updateResumeSaveButton();
+    UI.showToast(`已切换到 ${Save.getAccountName()}`);
+    this.showTitle();
+    this.maybeShowNextRequiredModal();
   },
 
   enterGuest() {
@@ -364,9 +390,25 @@ const App = {
     this.showTitle();
   },
 
-  async changePassword(oldPassword, newPassword, confirmPassword) {
+  switchAccount() {
+    if (Save.serverToken) {
+      Api.logout(Save.serverToken).catch(() => {});
+    }
+    Save.clearServerSession();
+    Save.setOnboarded();
+    UI.updateAccountButton();
+    UI.renderDifficultySelector();
+    UI.showToast("请登录其他账号");
+    UI.openLogin();
+    this.showTitle();
+  },
+
+  async changePassword() {
     if (Save.isGuest()) return;
-    const message = document.getElementById("passwordMessage");
+    const oldPassword = UI.refs.passwordOld.value;
+    const newPassword = UI.refs.passwordNew.value;
+    const confirmPassword = UI.refs.passwordConfirm.value;
+    const message = UI.refs.passwordModalError;
     if (!newPassword || newPassword.length < 4) {
       message.textContent = "新密码至少 4 位";
       message.hidden = false;
@@ -380,6 +422,7 @@ const App = {
     try {
       await Api.changePassword(Save.serverToken, oldPassword, newPassword);
       Save.serverPassword = newPassword;
+      UI.hidePasswordModal();
       UI.showToast("密码已修改");
       UI.renderAccount();
     } catch (error) {
@@ -389,14 +432,10 @@ const App = {
   },
 
   viewPassword() {
-    const message = document.getElementById("passwordMessage");
-    message.hidden = false;
     if (Save.serverPassword) {
-      message.style.color = "#7bd88f";
-      message.textContent = `当前密码：${Save.serverPassword}`;
+      UI.showToast(`当前密码：${Save.serverPassword}`);
     } else {
-      message.style.color = "";
-      message.textContent = "本会话未记录密码，请重新登录后查看";
+      UI.showToast("本会话未记录密码，请重新登录后查看");
     }
   },
 
@@ -456,23 +495,11 @@ const App = {
 
   continueChapterIntro() {
     if (!UI.chapterIntro) return;
-    if (UI.chapterIntro.step === 0) {
-      UI.chapterIntro.step = 1;
-      UI.renderChapterQuiz();
-      return;
-    }
-    const callback = UI.chapterIntro.onDone;
-    UI.hideChapterIntro();
-    UI.chapterIntro = null;
-    callback && callback();
+    UI.advanceChapterIntro();
   },
 
   skipChapterIntro() {
-    if (!UI.chapterIntro) return;
-    const callback = UI.chapterIntro.onDone;
-    UI.hideChapterIntro();
-    UI.chapterIntro = null;
-    callback && callback();
+    if (this.runtime) this.runtime.finishIntro();
   },
 
   finishEndPoem() {
@@ -508,9 +535,13 @@ const App = {
     this.screen = "game";
     UI.show("game");
     UI.setAdminBadges(Save.isAdmin());
+    UI.showPause(false);
+    this.runtime.startIntro(chapter, level, getChapterIntroSteps(chapter, level), () => this.finishStartLevel(chapter, level));
+  },
+
+  finishStartLevel(chapter, level) {
     UI.updateHud(chapter, level, 0);
     UI.setGameStatus("关卡内容待设计 · 可操作框架预览");
-    UI.showPause(false);
     this.runtime.load(chapter, level);
     Input.gameActive = true;
   },
@@ -519,6 +550,20 @@ const App = {
     this.clearCompletionTimer();
     UI.hideCompletion();
     if (!this.currentChapter || !this.currentLevel) return;
+    this.paused = false;
+    UI.showPause(false);
+    if (this.runtime && this.runtime.intro) {
+      this.runtime.startIntro(
+        this.currentChapter,
+        this.currentLevel,
+        getChapterIntroSteps(this.currentChapter, this.currentLevel),
+        () => this.finishStartLevel(this.currentChapter, this.currentLevel)
+      );
+      UI.updateHud(this.currentChapter, this.currentLevel, 0);
+      UI.setGameStatus("已重置到关卡起点");
+      Input.gameActive = false;
+      return;
+    }
     this.runtime.load(this.currentChapter, this.currentLevel);
     UI.updateHud(this.currentChapter, this.currentLevel, 0);
     UI.setGameStatus("已重置到关卡起点");
@@ -564,6 +609,21 @@ const App = {
     this.paused = !this.paused;
     UI.showPause(this.paused);
     Input.gameActive = !this.paused;
+  },
+
+  answerKnowledge(index) {
+    if (!this.runtime || !this.runtime.answerQuestion) return;
+    const correct = this.runtime.answerQuestion(index);
+    if (correct) {
+      UI.closeKnowledgeQuestion();
+    } else {
+      UI.markKnowledgeAnswer(index, false);
+      UI.showToast("答案不对，再想想刚刚学到的定律");
+      if (this.runtime.dying) {
+        UI.closeKnowledgeQuestion();
+        UI.showToast("连续答错两次，重新锚定中");
+      }
+    }
   },
 
   saveAndReturnMenu() {
@@ -678,7 +738,7 @@ const App = {
     }
     UI.animateCharacterPreviews(dt);
 
-    if (this.screen === "game" && !this.paused && this.runtime && this.runtime.player) {
+    if (this.screen === "game" && !this.paused && this.runtime && (this.runtime.player || this.runtime.intro)) {
       this.runtime.update(dt, Input);
       this.runtime.render();
     }

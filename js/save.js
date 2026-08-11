@@ -1,4 +1,5 @@
 const SERVER_TOKEN_KEY = "physics-server-token";
+const SERVER_ACCOUNTS_KEY = "physics-server-accounts";
 const SERVER_CACHE_KEY = "physics-server-cache";
 const SERVER_NICKNAME_KEY = "physics-server-nickname";
 const GUEST_SAVE_KEY = "physics-guest-save-v1";
@@ -18,11 +19,18 @@ const Save = {
   serverToken: null,
   serverNickname: "游客",
   serverPassword: null,
+  serverAccounts: {},
 
   load() {
     this.mode = "guest";
     this.serverToken = null;
     this.serverNickname = "游客";
+    this.serverAccounts = {};
+    try {
+      this.serverAccounts = JSON.parse(localStorage.getItem(SERVER_ACCOUNTS_KEY) || "{}");
+    } catch {
+      this.serverAccounts = {};
+    }
 
     try {
       const token = localStorage.getItem(SERVER_TOKEN_KEY);
@@ -72,6 +80,7 @@ const Save = {
       try {
         localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
         localStorage.setItem(SERVER_NICKNAME_KEY, this.serverNickname);
+        this.persistServerAccounts();
       } catch {
         // storage unavailable
       }
@@ -88,6 +97,14 @@ const Save = {
     }
   },
 
+  persistServerAccounts() {
+    try {
+      localStorage.setItem(SERVER_ACCOUNTS_KEY, JSON.stringify(this.serverAccounts || {}));
+    } catch {
+      // storage unavailable
+    }
+  },
+
   reset() {
     this.data = this.defaultData();
     this.save();
@@ -99,20 +116,32 @@ const Save = {
     this.serverNickname = nickname;
     this.serverPassword = password;
     this.data = Object.assign(this.defaultData(), saveData || {});
+    this.serverAccounts[token] = {
+      nickname,
+      token,
+      saveData: this.data,
+      addedAt: Date.now()
+    };
     try {
       localStorage.setItem(SERVER_TOKEN_KEY, token);
       localStorage.setItem(SERVER_NICKNAME_KEY, nickname);
       localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+      this.persistServerAccounts();
     } catch {
       // storage unavailable
     }
   },
 
   clearServerSession() {
+    if (this.serverToken && this.serverAccounts) {
+      delete this.serverAccounts[this.serverToken];
+      this.persistServerAccounts();
+    }
     this.mode = "guest";
     this.serverToken = null;
     this.serverNickname = "游客";
     this.serverPassword = null;
+    this.serverAccounts = this.serverAccounts || {};
     this.data = this.defaultData();
     try {
       localStorage.removeItem(SERVER_TOKEN_KEY);
@@ -122,6 +151,27 @@ const Save = {
     } catch {
       // storage unavailable
     }
+  },
+
+  getServerAccounts() {
+    return Object.values(this.serverAccounts || {});
+  },
+
+  switchServerAccount(token) {
+    const account = this.serverAccounts[token];
+    if (!account) return false;
+    this.mode = "server";
+    this.serverToken = account.token;
+    this.serverNickname = account.nickname;
+    this.data = Object.assign(this.defaultData(), account.saveData || {});
+    try {
+      localStorage.setItem(SERVER_TOKEN_KEY, account.token);
+      localStorage.setItem(SERVER_NICKNAME_KEY, account.nickname);
+      localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+    } catch {
+      // storage unavailable
+    }
+    return true;
   },
 
   isGuest() {
@@ -139,6 +189,10 @@ const Save = {
   renameActiveAccount(name) {
     const normalized = String(name || "").trim().slice(0, 16) || "玩家1";
     this.serverNickname = normalized;
+    if (this.serverToken && this.serverAccounts[this.serverToken]) {
+      this.serverAccounts[this.serverToken].nickname = normalized;
+      this.persistServerAccounts();
+    }
     this.save();
     return normalized;
   },
@@ -201,6 +255,7 @@ const Save = {
 
   getVisibleChapters() {
     if (this.isAdmin()) return CHAPTERS;
+    if (!this.isGuest()) return CHAPTERS;
     if (this.data.difficulty === "simple") {
       return CHAPTERS.filter((chapter) => chapter.id <= 9);
     }
@@ -221,13 +276,22 @@ const Save = {
   },
 
   recordLevelResult(levelId, result) {
-    this.data.levelRecords[levelId] = {
+    const previous = this.getLevelRecord(levelId) || {};
+    const candidate = {
       deaths: Number(result.deaths) || 0,
       elapsed: Number(result.elapsed) || 0,
       shards: Number(result.collected) || 0,
       fragment: Boolean(result.fragmentFound),
       parTime: Number(result.parTime) || 300,
       width: Number(result.width) || 1800
+    };
+    this.data.levelRecords[levelId] = {
+      deaths: Math.min(Number(previous.deaths) || 99, candidate.deaths),
+      elapsed: Math.min(Number(previous.elapsed) || Infinity, candidate.elapsed),
+      shards: Math.max(Number(previous.shards) || 0, candidate.shards),
+      fragment: Boolean(previous.fragment || candidate.fragment),
+      parTime: candidate.parTime,
+      width: candidate.width
     };
     this.save();
   },
@@ -273,6 +337,7 @@ const Save = {
 
   isChapterUnlocked(chapter) {
     if (this.isAdmin()) return true;
+    if (!this.isGuest()) return true;
     if (chapter.id === 1) return true;
 
     const previousIndex = CHAPTERS.findIndex((item) => item.id === chapter.id) - 1;
@@ -285,23 +350,21 @@ const Save = {
 
   isFinalUnlocked() {
     if (this.isAdmin()) return true;
+    if (!this.isGuest()) return true;
     const relativity = CHAPTERS.find((chapter) => chapter.id === 13);
     return Boolean(relativity) && this.isChapterCompleted(relativity);
   },
 
   isLevelUnlocked(chapter, level) {
     if (this.isAdmin()) return true;
+    if (this.isGuest()) {
+      return chapter.id === 1 && level.id === "1-1";
+    }
     if (this.data.difficulty === "hell" && level.role === "教学关") return false;
     if (chapter.id === FINAL_CHAPTER.id) {
       return this.isFinalUnlocked();
     }
-    if (!this.isChapterUnlocked(chapter)) return false;
-
-    const index = chapter.levels.findIndex((item) => item.id === level.id);
-    if (index <= 0) return true;
-
-    const previousLevel = chapter.levels[index - 1];
-    return this.isLevelCompleted(previousLevel.id);
+    return true;
   },
 
   getCompletedChapterCount() {

@@ -28,7 +28,7 @@ const CHAPTERS = [
       }
     },
     levels: [
-      { id: "1-1", name: "初见 · 风起之地", role: "教学关" },
+      { id: "1-1", name: "地月之间", role: "知识关 · 重力" },
       { id: "1-2", name: "向地而生", role: "知识关 · 重力" },
       { id: "1-3", name: "冰与沙", role: "知识关 · 摩擦力" },
       { id: "1-4", name: "蓄势而跃", role: "知识关 · 弹力" },

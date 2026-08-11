@@ -11,11 +11,23 @@ function cloneList(list) {
   return (list || []).map((item) => ({ ...item }));
 }
 
+function shuffleArray(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = list[i]; list[i] = list[j]; list[j] = temp;
+  }
+  return list;
+}
+
 class LevelRuntime {
   constructor(canvas, callbacks = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.callbacks = callbacks;
+    this.canvas.style.touchAction = "none";
+    this.canvas.addEventListener("pointerdown", (event) => this.handleIntroPointerDown(event));
+    this.canvas.addEventListener("pointermove", (event) => this.handleIntroPointerMove(event));
+    this.canvas.addEventListener("pointerup", (event) => this.handleIntroPointerUp(event));
     this.width = 960;
     this.height = 640;
     this.chapter = null;
@@ -64,6 +76,7 @@ class LevelRuntime {
   load(chapter, levelMeta) {
     this.chapter = chapter;
     this.levelMeta = levelMeta;
+    this.intro = null;
     this.level = getLevelDef(chapter.id, levelMeta.id);
     this.completed = false;
     this.collected = 0;
@@ -88,6 +101,15 @@ class LevelRuntime {
     }));
     this.switches = cloneList(def.switches).map((item) => ({ ...item, active: false, latched: false }));
     this.doors = cloneList(def.doors).map((item) => ({ ...item, open: item.open || false }));
+    this.questionGates = cloneList(def.questionGates || []).map((gate) => {
+      const options = (gate.options || []).slice();
+      const original = options[gate.answer];
+      shuffleArray(options);
+      return { ...gate, options, answer: original === undefined ? gate.answer : options.indexOf(original), solved: false, wrongCount: 0 };
+    });
+    this.activeQuestion = null;
+    this.currentGravityLabel = "地球";
+    this.currentGravityScale = 1;
     this.spikes = cloneList(def.spikes);
     this.springs = cloneList(def.springs);
     this.launchPads = cloneList(def.launchPads);
@@ -211,6 +233,12 @@ class LevelRuntime {
     this.deathTimer = 0;
     this.deathParticles = [];
     this.shake = 0;
+    this.activeQuestion = null;
+    if (this.questionGates) {
+      for (const gate of this.questionGates) {
+        if (!gate.solved) gate.wrongCount = 0;
+      }
+    }
     this.player = {
       x: start.x,
       y: start.y,
@@ -279,7 +307,11 @@ class LevelRuntime {
 
   update(dt, input) {
     const frame = Math.min(dt, 1 / 30);
-    if (!this.player) return;
+    if (!this.player && !this.intro) return;
+    if (this.intro) {
+      this.updateIntro(frame, input);
+      return;
+    }
 
     if (this.completed) {
       this.celebrationTime += frame;
@@ -345,9 +377,14 @@ class LevelRuntime {
         centerY < zone.y + zone.h
       ) {
         gravityScale = zone.scale;
+        this.currentGravityLabel = zone.label || "特殊区域";
         break;
       }
     }
+    if (gravityScale === 1) {
+      this.currentGravityLabel = "地球";
+    }
+    this.currentGravityScale = gravityScale;
 
     player.vy += 1500 * gravityScale * gravityModifier * frame;
     player.vy = Math.min(player.vy, 1000);
@@ -367,6 +404,7 @@ class LevelRuntime {
     }
     player.crouch = crouch;
 
+    this.updateQuestionGates(input);
     this.collideWithPlatforms(frame, moveDirection);
     this.applySprings();
     this.applyLaunchPads();
@@ -419,6 +457,11 @@ class LevelRuntime {
     for (const platform of this.movingPlatforms) {
       const current = { ...platform, moving: true };
       solids.push(current);
+    }
+    for (const door of this.doors) {
+      if (!door.open) {
+        solids.push({ ...door, kind: "door", moving: false, dx: 0, dy: 0 });
+      }
     }
 
     for (const platform of solids) {
@@ -570,6 +613,40 @@ class LevelRuntime {
     }
   }
 
+  updateQuestionGates(input) {
+    if (!this.activeQuestion) {
+      for (const gate of this.questionGates) {
+        if (!gate.solved && this.overlap(this.player, gate)) {
+          this.activeQuestion = gate;
+          this.callbacks.onQuestion && this.callbacks.onQuestion(gate);
+          break;
+        }
+      }
+    }
+
+  }
+
+  answerQuestion(selected) {
+    const gate = this.activeQuestion;
+    if (!gate) return false;
+    if (selected === gate.answer) {
+      gate.solved = true;
+      const door = this.doors.find((item) => item.id === gate.doorId);
+      if (door) door.open = true;
+      this.activeQuestion = null;
+      this.callbacks.onToast && this.callbacks.onToast("定律掌握，通路已开启");
+      this.callbacks.onQuestionAnswered && this.callbacks.onQuestionAnswered(true);
+      return true;
+    }
+    this.callbacks.onQuestionAnswered && this.callbacks.onQuestionAnswered(false);
+    gate.wrongCount = (gate.wrongCount || 0) + 1;
+    if (gate.wrongCount >= 2) {
+      this.activeQuestion = null;
+      this.startDeath();
+    }
+    return false;
+  }
+
   updateSpikes() {
     for (const spike of this.spikes) {
       if (this.overlap(this.player, spike)) {
@@ -667,6 +744,14 @@ class LevelRuntime {
     const player = this.player;
     const centerX = player.x + player.w / 2;
     const centerY = player.y + player.h / 2;
+
+    for (const gate of this.questionGates) {
+      if (!gate.solved && this.overlap(this.player, gate)) {
+        this.activeQuestion = gate;
+        this.callbacks.onToast && this.callbacks.onToast("按下 1/2/3 选择答案");
+        return;
+      }
+    }
 
     if (Math.hypot(this.core.x - centerX, this.core.y - centerY) < 70) {
       this.completeLevel();
@@ -771,26 +856,28 @@ class LevelRuntime {
   render() {
     const ctx = this.ctx;
     const accent = this.chapter ? this.chapter.accent : "#2fd6c3";
+    if (this.intro) {
+      this.renderIntro();
+      return;
+    }
     ctx.save();
-    ctx.clearRect(0, 0, this.width, this.height);
+    const scale = this.canvas.width / this.width;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-    const sky = ctx.createLinearGradient(0, 0, 0, this.height);
-    sky.addColorStop(0, "#101820");
-    sky.addColorStop(0.55, "#1b2d35");
-    sky.addColorStop(1, "#2b3a40");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, this.width, this.height);
+    this.drawBackground();
 
     ctx.save();
     const shakeX = (Math.random() - 0.5) * this.shake * 14;
     const shakeY = (Math.random() - 0.5) * this.shake * 10;
     ctx.translate(-this.cameraX + shakeX, -this.cameraY + shakeY);
-    this.drawGrid();
-    this.drawDecorations(accent);
+    this.drawWorldBackdrop();
     this.drawPlatforms(accent);
     this.drawSprings();
     this.drawLaunchPads();
     this.drawSwitches();
+    this.drawQuestionGates();
     this.drawDoors(accent);
     this.drawSpikes();
     this.drawBoxes();
@@ -843,6 +930,381 @@ class LevelRuntime {
     ctx.fillRect(1100, 320, 520, 10);
   }
 
+  getTerrainZoneForX(x) {
+    let hasPlanetTerrain = false;
+    for (const platform of this.platforms) {
+      if (platform.kind === "earth" || platform.kind === "moon" || platform.kind === "mars") {
+        hasPlanetTerrain = true;
+        if (x >= platform.x && x <= platform.x + platform.w) {
+          return platform.kind;
+        }
+      }
+    }
+    for (const zone of this.gravityZones) {
+      if (x >= zone.x && x <= zone.x + zone.w) {
+        if (zone.label === "月球") return "moon";
+        if (zone.label === "火星") return "mars";
+      }
+    }
+    return hasPlanetTerrain ? "earth" : "default";
+  }
+
+  getCurrentTerrainZone() {
+    const x = this.player ? this.player.x + this.player.w / 2 : this.cameraX + this.width / 2;
+    return this.getTerrainZoneForX(x);
+  }
+
+  drawBackground() {
+    const ctx = this.ctx;
+    const zone = this.getCurrentTerrainZone();
+    const sky = ctx.createLinearGradient(0, 0, 0, this.height);
+    if (zone === "moon") {
+      sky.addColorStop(0, "#04070d");
+      sky.addColorStop(0.58, "#101827");
+      sky.addColorStop(1, "#2c3842");
+    } else if (zone === "mars") {
+      sky.addColorStop(0, "#2b0d0c");
+      sky.addColorStop(0.52, "#6f2e1f");
+      sky.addColorStop(1, "#c66d42");
+    } else if (zone === "earth") {
+      sky.addColorStop(0, "#4eaee8");
+      sky.addColorStop(0.58, "#9ed9ed");
+      sky.addColorStop(1, "#f0dda4");
+    } else {
+      sky.addColorStop(0, "#101820");
+      sky.addColorStop(0.55, "#1b2d35");
+      sky.addColorStop(1, "#2b3a40");
+    }
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  drawWorldBackdrop() {
+    const zone = this.getCurrentTerrainZone();
+    if (zone === "moon") {
+      this.drawMoonBackdrop();
+    } else if (zone === "mars") {
+      this.drawMarsBackdrop();
+    } else if (zone === "earth") {
+      this.drawEarthBackdrop();
+    }
+  }
+
+  drawCloudShape(ctx, x, y, scale) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.beginPath();
+    ctx.ellipse(0, 8, 42, 15, 0, 0, Math.PI * 2);
+    ctx.ellipse(-28, 10, 26, 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(30, 9, 25, 11, 0, 0, Math.PI * 2);
+    ctx.ellipse(-4, -5, 27, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.beginPath();
+    ctx.ellipse(-24, 0, 18, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawHillLayer(ctx, left, baseY, amp, color, seedName) {
+    const ctxSeed = `${this.level.id}:${seedName}`;
+    const step = 56;
+    const right = this.cameraX + this.width + 120;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(left - 100, this.cameraY + this.height);
+    for (let x = left - 100; x <= right; x += step) {
+      const bucket = Math.floor(x / step);
+      const wave = hashString(`${ctxSeed}:${bucket}`) % 100;
+      const y = baseY - amp * (0.5 + wave / 160) + Math.sin(x * 0.006 + bucket) * amp * 0.12;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(right, this.cameraY + this.height);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  drawStarfield(ctx, zoneName) {
+    const step = 44;
+    const left = Math.floor(this.cameraX / step) * step - step;
+    for (let x = left; x < this.cameraX + this.width + step; x += step) {
+      const bucket = Math.floor(x / step);
+      const seed = hashString(`${this.level.id}:${zoneName}star${bucket}`);
+      const y = 28 + (seed % 350);
+      const size = seed % 5 === 0 ? 2 : 1;
+      ctx.fillStyle = `rgba(255,255,255,${(0.28 + (seed % 42) / 100).toFixed(2)})`;
+      ctx.fillRect(x + (seed % 42), y, size, size);
+    }
+  }
+
+  drawEarthBackdrop() {
+    const ctx = this.ctx;
+    ctx.fillStyle = "rgba(255,226,156,0.32)";
+    ctx.beginPath();
+    ctx.arc(770, 115, 84, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,244,190,0.55)";
+    ctx.beginPath();
+    ctx.arc(770, 115, 58, 0, Math.PI * 2);
+    ctx.fill();
+
+    const step = 220;
+    const left = Math.floor(this.cameraX / step) * step - 140;
+    for (let x = left; x < this.cameraX + this.width + 180; x += step) {
+      const bucket = Math.floor(x / step);
+      const ox = hashString(`${this.level.id}:earthcloudx${bucket}`) % 180;
+      const oy = 62 + (hashString(`${this.level.id}:earthcloudy${bucket}`) % 130);
+      const scale = 0.8 + (hashString(`${this.level.id}:earthclouds${bucket}`) % 60) / 100;
+      this.drawCloudShape(ctx, x + ox, oy, scale);
+    }
+
+    this.drawHillLayer(ctx, left, 610, 72, "rgba(105,148,105,0.26)", "earthhill1");
+    this.drawHillLayer(ctx, left, 660, 46, "rgba(68,112,78,0.32)", "earthhill2");
+  }
+
+  drawMoonBackdrop() {
+    const ctx = this.ctx;
+    this.drawStarfield(ctx, "moon");
+
+    const earthX = Math.min(1120, this.level.width * 0.34);
+    if (earthX > this.cameraX - 180 && earthX < this.cameraX + this.width + 180) {
+      ctx.fillStyle = "rgba(85,150,255,0.12)";
+      ctx.beginPath();
+      ctx.arc(earthX, 132, 78, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2f79c9";
+      ctx.beginPath();
+      ctx.arc(earthX, 132, 54, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#54ac69";
+      ctx.beginPath();
+      ctx.ellipse(earthX - 14, 118, 15, 10, -0.4, 0, Math.PI * 2);
+      ctx.ellipse(earthX + 17, 144, 12, 7, 0.3, 0, Math.PI * 2);
+      ctx.ellipse(earthX + 2, 154, 7, 4, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.46)";
+      ctx.beginPath();
+      ctx.ellipse(earthX - 22, 112, 24, 9, -0.25, 0, Math.PI * 2);
+      ctx.ellipse(earthX + 23, 132, 19, 8, 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const step = 240;
+    const left = Math.floor(this.cameraX / step) * step - 160;
+    this.drawHillLayer(ctx, left, 630, 86, "rgba(74,87,98,0.36)", "moonhill1");
+    this.drawHillLayer(ctx, left, 682, 52, "rgba(46,56,65,0.48)", "moonhill2");
+  }
+
+  drawMarsBackdrop() {
+    const ctx = this.ctx;
+    this.drawStarfield(ctx, "mars");
+
+    const sunX = Math.min(1420, this.level.width * 0.42);
+    if (sunX > this.cameraX - 160 && sunX < this.cameraX + this.width + 160) {
+      ctx.fillStyle = "rgba(255,196,132,0.18)";
+      ctx.beginPath();
+      ctx.arc(sunX, 130, 78, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f2b57a";
+      ctx.beginPath();
+      ctx.arc(sunX, 130, 44, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.beginPath();
+      ctx.arc(sunX, 130, 32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const step = 300;
+    const left = Math.floor(this.cameraX / step) * step - 180;
+    this.drawHillLayer(ctx, left, 640, 64, "rgba(105,48,38,0.3)", "marshill1");
+    this.drawHillLayer(ctx, left, 686, 42, "rgba(76,35,28,0.42)", "marshill2");
+
+    const volcanoX = this.level.width * 0.82;
+    if (volcanoX > this.cameraX - 300 && volcanoX < this.cameraX + this.width + 300) {
+      ctx.fillStyle = "rgba(91,39,32,0.5)";
+      ctx.beginPath();
+      ctx.moveTo(volcanoX - 150, 900);
+      ctx.quadraticCurveTo(volcanoX - 92, 650, volcanoX, 555);
+      ctx.quadraticCurveTo(volcanoX + 92, 650, volcanoX + 150, 900);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(216,126,88,0.24)";
+      ctx.beginPath();
+      ctx.ellipse(volcanoX, 552, 22, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  drawGroundCraters(platform, kind, count) {
+    const ctx = this.ctx;
+    const seedBase = `${this.level.id}:${platform.kind}:${platform.x}`;
+    const dark = kind === "moon" ? "rgba(32,41,52,0.5)" : "rgba(91,38,28,0.46)";
+    const light = kind === "moon" ? "rgba(255,255,255,0.2)" : "rgba(255,185,140,0.18)";
+    for (let i = 0; i < count; i += 1) {
+      const seed = hashString(`${seedBase}:crater${i}`);
+      const rx = 8 + (seed % 17);
+      const ry = Math.max(3, rx * 0.36);
+      const x = platform.x + 24 + (seed % Math.max(48, platform.w - 48));
+      const y = platform.y + 14 + ((seed >> 3) % Math.max(22, platform.h - 30));
+      ctx.fillStyle = dark;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = light;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x - 2, y - 1, rx - 2, Math.max(1, ry - 1), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  drawPlanetGround(platform) {
+    const ctx = this.ctx;
+    const kind = platform.kind;
+    const gradient = ctx.createLinearGradient(platform.x, platform.y, platform.x, platform.y + platform.h);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(platform.x, platform.y, platform.w, platform.h);
+    ctx.clip();
+
+    if (kind === "earth") {
+      gradient.addColorStop(0, "#6fae58");
+      gradient.addColorStop(0.18, "#5e8e50");
+      gradient.addColorStop(0.48, "#815d3e");
+      gradient.addColorStop(1, "#483527");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
+
+      ctx.fillStyle = "rgba(68,48,32,0.18)";
+      for (let i = 0; i < 24; i += 1) {
+        const seed = hashString(`${this.level.id}:earthsoil${platform.x}:${i}`);
+        const x = platform.x + 8 + (seed % Math.max(40, platform.w - 16));
+        const y = platform.y + 22 + ((seed >> 3) % Math.max(32, platform.h - 28));
+        ctx.fillRect(x, y, 6 + (seed % 5), 3 + (seed % 3));
+      }
+
+      for (let i = 0; i < 18; i += 1) {
+        const seed = hashString(`${this.level.id}:earthdetail${platform.x}:${i}`);
+        const x = platform.x + 10 + (seed % Math.max(40, platform.w - 20));
+        const y = platform.y + 20 + ((seed >> 3) % Math.max(34, platform.h - 28));
+        if (seed % 4 === 0) {
+          ctx.fillStyle = "#ed7f97";
+          for (let p = 0; p < 5; p += 1) {
+            const angle = (p / 5) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.ellipse(x + Math.cos(angle) * 5, y + Math.sin(angle) * 5, 3, 2, angle, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = seed % 3 === 0 ? "rgba(255,255,255,0.2)" : "rgba(38,27,20,0.3)";
+          ctx.beginPath();
+          ctx.ellipse(x, y, 4 + (seed % 4), 2 + (seed % 3), seed % 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (kind === "moon") {
+      gradient.addColorStop(0, "#d7dfe6");
+      gradient.addColorStop(0.32, "#aab4be");
+      gradient.addColorStop(0.78, "#69737d");
+      gradient.addColorStop(1, "#3d454e");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
+      this.drawGroundCraters(platform, "moon", 10);
+
+      for (let i = 0; i < 34; i += 1) {
+        const seed = hashString(`${this.level.id}:moonsoil${platform.x}:${i}`);
+        const x = platform.x + 8 + (seed % Math.max(40, platform.w - 16));
+        const y = platform.y + 14 + ((seed >> 3) % Math.max(24, platform.h - 24));
+        ctx.fillStyle = seed % 2 === 0 ? "rgba(18,26,34,0.16)" : "rgba(255,255,255,0.15)";
+        ctx.fillRect(x, y, 2 + (seed % 3), 1 + (seed % 2));
+      }
+
+      ctx.strokeStyle = "rgba(22,30,38,0.2)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 7; i += 1) {
+        const x = platform.x + 40 + i * 136 + (i % 3) * 13;
+        ctx.beginPath();
+        ctx.moveTo(x, platform.y + platform.h - 16);
+        ctx.quadraticCurveTo(x + 10, platform.y + platform.h - 26, x + 22, platform.y + platform.h - 18);
+        ctx.stroke();
+      }
+    } else {
+      gradient.addColorStop(0, "#e68a5d");
+      gradient.addColorStop(0.34, "#b85e3c");
+      gradient.addColorStop(0.76, "#88412c");
+      gradient.addColorStop(1, "#5f2d22");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
+      this.drawGroundCraters(platform, "mars", 10);
+
+      ctx.fillStyle = "rgba(74,31,24,0.3)";
+      for (let i = 0; i < 22; i += 1) {
+        const seed = hashString(`${this.level.id}:marsrock${platform.x}:${i}`);
+        const x = platform.x + 10 + (seed % Math.max(40, platform.w - 20));
+        const y = platform.y + 18 + ((seed >> 3) % Math.max(30, platform.h - 28));
+        const size = 5 + (seed % 8);
+        ctx.beginPath();
+        ctx.moveTo(x, y + size * 0.5);
+        ctx.lineTo(x + size * 0.45, y - size * 0.35);
+        ctx.lineTo(x + size, y + size * 0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = "rgba(74,31,24,0.24)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 6; i += 1) {
+        const x = platform.x + 20 + i * 180 + (i % 2) * 36;
+        ctx.beginPath();
+        ctx.moveTo(x, platform.y + platform.h - 10);
+        ctx.quadraticCurveTo(x + 46, platform.y + platform.h - 32, x + 96, platform.y + platform.h - 12);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+
+    if (kind === "earth") {
+      ctx.fillStyle = "#8ed873";
+      ctx.fillRect(platform.x, platform.y, platform.w, 10);
+      ctx.strokeStyle = "#3f7439";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      for (let x = platform.x + 8; x < platform.x + platform.w; x += 18) {
+        const tuft = hashString(`${this.level.id}:earthtuft${platform.x}:${x}`) % 7;
+        ctx.beginPath();
+        ctx.moveTo(x, platform.y + 8);
+        ctx.lineTo(x - 3 + tuft, platform.y - 3);
+        ctx.moveTo(x + 3, platform.y + 8);
+        ctx.lineTo(x + 4 + tuft, platform.y - 2);
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.fillRect(platform.x, platform.y, platform.w, 4);
+      if (kind === "moon") {
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.fillRect(platform.x, platform.y + 4, platform.w, 2);
+      } else {
+        ctx.fillStyle = "rgba(255,201,160,0.2)";
+        ctx.fillRect(platform.x, platform.y + 4, platform.w, 2);
+      }
+    }
+
+    ctx.strokeStyle = "rgba(10,14,18,0.45)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(platform.x, platform.y, platform.w, platform.h);
+  }
+
   drawPlatforms(accent) {
     const ctx = this.ctx;
     const drawPlatform = (platform) => {
@@ -863,7 +1325,12 @@ class LevelRuntime {
         return;
       }
 
-      const color = platform.kind === "ice" ? "#aee9ff" : platform.kind === "sand" ? "#d7b878" : accent;
+      if (platform.kind === "earth" || platform.kind === "moon" || platform.kind === "mars") {
+        this.drawPlanetGround(platform);
+        return;
+      }
+
+      const color = platform.kind === "ice" ? "#aee9ff" : platform.kind === "sand" ? "#d7b878" : platform.kind === "moon" ? "#c8d3dc" : platform.kind === "mars" ? "#b96a4b" : platform.kind === "ceiling" ? "rgba(30,40,52,0.9)" : "#5d8f63";
       ctx.fillStyle = color;
       ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
       ctx.fillStyle = "rgba(255,255,255,0.28)";
@@ -918,9 +1385,105 @@ class LevelRuntime {
     }
   }
 
+  drawQuestionGates() {
+    const ctx = this.ctx;
+    for (const gate of this.questionGates) {
+      if (gate.solved) {
+        ctx.strokeStyle = "rgba(123,216,143,0.35)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(gate.x, gate.y, gate.w, gate.h);
+        continue;
+      }
+      const cx = gate.x + gate.w / 2;
+      const gradient = ctx.createLinearGradient(gate.x, gate.y, gate.x + gate.w, gate.y);
+      gradient.addColorStop(0, "rgba(76,124,255,0.18)");
+      gradient.addColorStop(0.5, "rgba(160,190,255,0.42)");
+      gradient.addColorStop(1, "rgba(76,124,255,0.18)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(gate.x, gate.y, gate.w, gate.h);
+      ctx.strokeStyle = "rgba(180,210,255,0.6)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(gate.x + 2, gate.y + 2, gate.w - 4, gate.h - 4);
+      const waveY = gate.y + ((this.elapsed * 70 + gate.x) % gate.h);
+      ctx.fillStyle = "rgba(255,255,255,0.28)";
+      ctx.fillRect(gate.x + 4, waveY, gate.w - 8, 26);
+      ctx.save();
+      ctx.globalAlpha = 0.55 + Math.sin(this.elapsed * 4) * 0.25;
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 24px 'Microsoft YaHei', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("?", cx, gate.y + 70);
+      ctx.fillText("知识屏障", cx, gate.y + 106);
+      ctx.restore();
+      for (let i = 0; i < 4; i += 1) {
+        const py = gate.y + ((i * 213 + this.elapsed * 36) % gate.h);
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillRect(gate.x + 8 + (i % 2) * 6, py, 3, 3);
+      }
+  }
+  }
+
+  drawQuestionPanel() {
+    if (!this.activeQuestion) return;
+    const ctx = this.ctx;
+    const gate = this.activeQuestion;
+    ctx.fillStyle = "rgba(10,14,18,0.78)";
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const panelX = this.width / 2 - 300;
+    const panelY = this.height / 2 - 150;
+    ctx.fillStyle = "#222a35";
+    ctx.fillRect(panelX, panelY, 600, 300);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, 600, 300);
+
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "700 18px 'Microsoft YaHei', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("知识校验：请用刚学到的定律作答", this.width / 2, panelY + 34);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "15px 'Microsoft YaHei', sans-serif";
+    this.wrapText(ctx, gate.question, panelX + 30, panelY + 80, 540, 24);
+
+    gate.options.forEach((option, index) => {
+      const y = panelY + 140 + index * 42;
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.fillRect(panelX + 30, y, 540, 34);
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.strokeRect(panelX + 30, y, 540, 34);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.fillText(`${index + 1}. ${option}`, panelX + 44, y + 23);
+    });
+
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.textAlign = "center";
+    ctx.fillText("按数字键 1 / 2 / 3 选择答案", this.width / 2, panelY + 280);
+  }
+
+  wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+    const chars = Array.from(text);
+    let line = "";
+    let currentY = y;
+    for (const char of chars) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, currentY);
+        line = char;
+        currentY += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, x, currentY);
+  }
+
   drawDoors(accent) {
     const ctx = this.ctx;
     for (const door of this.doors) {
+      if (this.questionGates.some((gate) => gate.doorId === door.id)) continue;
       if (door.open) {
         ctx.strokeStyle = "rgba(123,216,143,0.75)";
         ctx.lineWidth = 3;
@@ -1397,7 +1960,7 @@ class LevelRuntime {
     const ctx = this.ctx;
     const player = this.player;
     ctx.fillStyle = "rgba(10,14,18,0.66)";
-    ctx.fillRect(0, 0, this.width, 44);
+    ctx.fillRect(0, 0, this.width, 62);
     ctx.fillStyle = "#fff";
     ctx.font = "700 15px 'Microsoft YaHei', sans-serif";
     ctx.textAlign = "center";
@@ -1405,6 +1968,15 @@ class LevelRuntime {
     ctx.fillStyle = "rgba(255,255,255,0.6)";
     ctx.font = "11px 'Microsoft YaHei', sans-serif";
     ctx.fillText(`时间 ${Math.floor(this.elapsed)}s · 死亡 ${this.deaths} 次`, this.width / 2, 35);
+
+    const currentG = this.currentGravityLabel === "月球" ? 1.63 : this.currentGravityLabel === "火星" ? 3.71 : 9.8;
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "12px 'Microsoft YaHei', sans-serif";
+    ctx.fillText(
+      `当前区域：${this.currentGravityLabel} · g≈${currentG} N/kg · 质量 50kg · 重量 ${(50 * currentG).toFixed(1)}N`,
+      this.width / 2,
+      52
+    );
 
     if (this.completed) {
       ctx.fillStyle = "#ffd166";
@@ -1425,6 +1997,615 @@ class LevelRuntime {
       ctx.fillText(`HP ${this.hearts}/10`, 12, 80);
       ctx.fillText(`FRAGMENT ${this.fragmentFound}`, 12, 96);
     }
+  }
+
+  startIntro(chapter, levelMeta, steps, onDone) {
+    this.chapter = chapter;
+    this.levelMeta = levelMeta;
+    this.level = getLevelDef(chapter.id, levelMeta.id);
+    this.player = null;
+    this.completed = false;
+    this.loadSprites();
+    if (!this.newtonImage) {
+      this.newtonImage = new Image();
+      this.newtonImage.src = NEWTON_SPRITE;
+    }
+    this.intro = { chapter, levelMeta, steps: this.prepareIntroSteps(steps), index: 0, onDone, elapsed: 0, newtonX: 660, playerX: 420, playerY: 420, newtonY: 560, playerDescend: false, formulaIndex: 0, formulaWrong: 0, formulaFilled: [], pressedIndex: null, drag: null, feedback: null, done: false, transition: null, apple: null, appleScene: null };
+  }
+  finishIntro() {
+    const intro = this.intro;
+    if (!intro) return;
+    this.intro = null;
+    if (intro.onDone) intro.onDone();
+  }
+  prepareIntroSteps(steps) {
+    return (steps || []).map((step) => {
+      const next = { ...step };
+      if (step.type === "choice" && Array.isArray(step.options)) {
+        const options = step.options.slice();
+        const original = options[step.answer];
+        shuffleArray(options);
+        next.options = options;
+        next.answer = original === undefined ? step.answer : options.indexOf(original);
+      } else if (step.type === "formula" && Array.isArray(step.options)) {
+        next.options = shuffleArray(step.options.slice());
+        next.answers = (step.answers || []).slice();
+      }
+      return next;
+    });
+  }
+  handleIntroPointerDown(event) {
+    if (!this.intro || this.intro.transition) return;
+    const point = this.toIntroPoint(event);
+    const step = this.intro.steps[this.intro.index];
+    if (!step) return;
+    const apple = this.intro.apple;
+    if (apple && apple.state === "held" && Math.hypot(point.x - apple.x, point.y - apple.y) < 28) {
+      apple.state = "falling"; apple.vx = 14; apple.vy = 0;
+      return;
+    }
+    if (step.type === "choice") {
+      const index = this.getIntroChoiceIndex(point);
+      if (index >= 0) this.intro.pressedIndex = index;
+    } else if (step.type === "formula") {
+      const index = this.getIntroFormulaOptionIndex(point);
+      if (index >= 0) this.intro.drag = { optionIndex: index, x: point.x, y: point.y };
+    }
+  }
+  handleIntroPointerMove(event) {
+    if (!this.intro || !this.intro.drag) return;
+    const point = this.toIntroPoint(event);
+    this.intro.drag.x = point.x; this.intro.drag.y = point.y;
+  }
+  handleIntroPointerUp(event) {
+    if (!this.intro) return;
+    const point = this.toIntroPoint(event);
+    if (this.intro.pressedIndex !== null) {
+      const index = this.getIntroChoiceIndex(point);
+      if (index === this.intro.pressedIndex) this.handleIntroChoice(index);
+      this.intro.pressedIndex = null;
+      return;
+    }
+    if (this.intro.drag) {
+      const slotIndex = this.getIntroFormulaSlotIndex(point);
+      if (slotIndex >= 0) this.handleIntroFormulaDrop(this.intro.drag.optionIndex, slotIndex);
+      this.intro.drag = null;
+    }
+  }
+  toIntroPoint(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * this.width,
+      y: ((event.clientY - rect.top) / rect.height) * this.height
+    };
+  }
+  getIntroChoiceIndex(point) {
+    const cardW = 170, cardH = 58, gap = 12;
+    const startX = (this.width - (3 * cardW + 2 * gap)) / 2;
+    const step = this.intro && this.intro.steps[this.intro.index];
+    const y = step ? this.getIntroBubbleMetrics(step).bottom + 16 : 230;
+    for (let i = 0; i < 3; i += 1) {
+      const x = startX + i * (cardW + gap);
+      if (point.x >= x && point.x <= x + cardW && point.y >= y && point.y <= y + cardH) return i;
+    }
+    return -1;
+  }
+  getIntroFormulaSlotIndex(point) {
+    const step = this.intro && this.intro.steps[this.intro.index];
+    const slots = step && step.slots; if (!slots || !slots.length) return -1;
+    const metrics = this.getIntroBubbleMetrics(step);
+    const panelX = 100, panelW = 760, panelY = metrics.bottom + 16, slotY = panelY + 28, slotH = 42;
+    const slotW = Math.min(92, (panelW - 24 - (slots.length - 1) * 6) / slots.length);
+    const startX = panelX + 12;
+    for (let i = 0; i < slots.length; i += 1) {
+      const x = startX + i * (slotW + 6);
+      if (point.x >= x && point.x <= x + slotW && point.y >= slotY && point.y <= slotY + slotH) return i;
+    }
+    return -1;
+  }
+  getIntroFormulaOptionIndex(point) {
+    const step = this.intro && this.intro.steps[this.intro.index];
+    const options = step && step.options; if (!options || !options.length) return -1;
+    const gap = 10;
+    const cardW = Math.min(126, (this.width - 120) / options.length - gap);
+    const total = options.length * cardW + (options.length - 1) * gap;
+    const metrics = this.getIntroBubbleMetrics(step);
+    const startX = (this.width - total) / 2, y = metrics.bottom + 16 + 120, h = 44;
+    for (let i = 0; i < options.length; i += 1) {
+      const x = startX + i * (cardW + gap);
+      if (point.x >= x && point.x <= x + cardW && point.y >= y && point.y <= y + h) return i;
+    }
+    return -1;
+  }
+  handleIntroChoice(index) {
+    const step = this.intro.steps[this.intro.index];
+    if (!step) return;
+    if (step.answer === null || index === step.answer) this.advanceIntro();
+    else { this.intro.feedback = { text: "再想想看", t: 0 }; this.callbacks.onToast && this.callbacks.onToast("再想想看"); }
+  }
+  handleIntroFormulaDrop(optionIndex, slotIndex) {
+    const step = this.intro.steps[this.intro.index];
+    if (!step || step.type !== "formula") return;
+    const blankSlots = step.slots.map((slot, i) => slot === "__" ? i : -1).filter((i) => i >= 0);
+    if (blankSlots[this.intro.formulaIndex] !== slotIndex) {
+      this.callbacks.onToast && this.callbacks.onToast("请拖到下一个空位");
+      return;
+    }
+    const selected = step.options[optionIndex];
+    const expected = step.answers[this.intro.formulaIndex];
+    if (selected === expected) {
+      this.intro.formulaFilled[slotIndex] = selected;
+      this.intro.formulaIndex += 1; this.intro.formulaWrong = 0;
+      if (this.intro.formulaIndex >= step.answers.length) this.advanceIntro();
+    } else {
+      this.intro.formulaWrong += 1;
+      this.callbacks.onToast && this.callbacks.onToast("符号位置不对");
+      this.intro.feedback = { text: "再想想看", t: 0 };
+      if (this.intro.formulaWrong >= 2) { this.intro.formulaIndex = 0; this.intro.formulaFilled = []; this.intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则重置"); }
+    }
+  }
+  updateIntro(frame, input) {
+    const intro = this.intro;
+    intro.elapsed += frame;
+    const step = intro.steps[intro.index];
+    if (!step) { this.finishIntro(); return; }
+    if (intro.transition) {
+      intro.transition.t += frame / intro.transition.duration;
+      if (intro.transition.t >= 1) intro.transition = null;
+      return;
+    }
+    if (intro.feedback) {
+      intro.feedback.t += frame;
+      if (intro.feedback.t > 1.4) intro.feedback = null;
+    }
+    this.updateIntroApple(frame, step.scene || "earth");
+    if (intro.playerDescend && intro.playerY < 560) {
+      intro.playerY = Math.min(560, intro.playerY + 240 * frame);
+      if (intro.playerY >= 560) intro.playerDescend = false;
+    }
+    const apple = intro.apple;
+    if (apple && apple.state === "held" && (input.wasPressed("Space") || input.wasPressed("Enter"))) {
+      apple.state = "falling"; apple.vx = 14; apple.vy = 0;
+      return;
+    }
+    if (step.type === "choice") {
+      for (let i = 1; i <= 3; i += 1) {
+        if (input.wasPressed(`Digit${i}`) || input.wasPressed(`Numpad${i}`)) {
+          if (step.answer === null || i - 1 === step.answer) this.advanceIntro();
+          else this.callbacks.onToast && this.callbacks.onToast("再想想看");
+          return;
+        }
+      }
+    } else if (step.type === "formula") {
+      for (let i = 1; i <= 5; i += 1) {
+        if (input.wasPressed(`Digit${i}`) || input.wasPressed(`Numpad${i}`)) {
+          const selected = step.options[i - 1];
+          if (selected === step.answers[intro.formulaIndex]) {
+            intro.formulaIndex += 1; intro.formulaWrong = 0;
+            if (intro.formulaIndex >= step.answers.length) this.advanceIntro();
+          } else {
+            intro.formulaWrong += 1;
+            if (intro.formulaWrong >= 2) { intro.formulaIndex = 0; intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则重置"); }
+            else this.callbacks.onToast && this.callbacks.onToast("符号位置不对");
+          }
+          return;
+        }
+      }
+    } else {
+      if (input.wasPressed("Space") || input.wasPressed("Enter")) this.advanceIntro();
+    }
+  }
+  advanceIntro() {
+    const intro = this.intro;
+    const fromScene = (intro.steps[intro.index] || {}).scene || "earth";
+    intro.index += 1; intro.formulaIndex = 0; intro.formulaWrong = 0;
+    intro.formulaFilled = [];
+    const nextStep = intro.steps[intro.index];
+    const toScene = nextStep ? nextStep.scene || "earth" : fromScene;
+    if (nextStep && toScene !== fromScene) {
+      intro.transition = { from: fromScene, to: toScene, t: 0, duration: 1.5 };
+      intro.playerY = 420; intro.playerDescend = false;
+    }
+    if (intro.index >= intro.steps.length) this.finishIntro();
+  }
+  updateIntroApple(frame, scene) {
+    const intro = this.intro;
+    if (intro.appleScene !== scene) {
+      intro.appleScene = scene;
+      intro.apple = { scene, state: "held", x: 452, y: 390, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 };
+      return;
+    }
+    const apple = intro.apple;
+    if (!apple) return;
+    const gravity = scene === "moon" ? 320 : scene === "mars" ? 760 : 1900;
+    if (apple.state === "held") {
+      apple.x = 452; apple.y = 390;
+      return;
+    }
+    if (apple.state === "falling") {
+      apple.vy += gravity * frame;
+      apple.vx += apple.vx < 14 ? 10 * frame : 0;
+      apple.x += apple.vx * frame;
+      apple.y += apple.vy * frame;
+      apple.rotation += (0.5 + Math.min(1.6, Math.abs(apple.vy) / 420)) * frame * 3.6;
+      const groundY = 549;
+      if (apple.y >= groundY) {
+        apple.y = groundY;
+        apple.bounces += 1;
+        const bounce = scene === "moon" ? 0.16 : scene === "mars" ? 0.27 : 0.4;
+        apple.vy = -Math.abs(apple.vy) * bounce;
+        if (apple.bounces >= 2 || Math.abs(apple.vy) < 46) {
+          apple.state = "rolling"; apple.vy = 0; apple.settleTimer = 0;
+        }
+      }
+    }
+    if (apple.state === "rolling") {
+      apple.rotation += 4.4 * frame;
+      apple.x += 32 * frame;
+      if (apple.x > 780) apple.x = 780;
+      apple.settleTimer += frame;
+      if (apple.settleTimer > 0.45 && !intro.playerDescend) intro.playerDescend = true;
+      if (apple.settleTimer > 2) intro.apple = null;
+    }
+  }
+  drawIntroApple(ctx) {
+    const apple = this.intro && this.intro.apple;
+    if (!apple) return;
+    const fade = apple.state === "rolling" && apple.settleTimer > 1.2 ? Math.max(0, 1 - (apple.settleTimer - 1.2) / 0.8) : 1;
+    const shadowAlpha = Math.max(0, 0.28 * (1 - Math.abs(560 - apple.y) / 140));
+    ctx.fillStyle = `rgba(0,0,0,${shadowAlpha.toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(apple.x, 562, 13, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.translate(apple.x, apple.y); ctx.rotate(apple.rotation); ctx.globalAlpha = Math.max(0, Math.min(1, fade));
+    ctx.fillStyle = "#ff5f57"; ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.38)"; ctx.beginPath(); ctx.arc(-3, -4, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#6b4a2f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(1, -9); ctx.lineTo(4, -17); ctx.stroke();
+    ctx.fillStyle = "#7bd88f"; ctx.beginPath(); ctx.ellipse(8, -15, 6, 3, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  renderIntro() {
+    const ctx = this.ctx; const scale = this.canvas.width / this.width;
+    ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,this.canvas.width,this.canvas.height); ctx.setTransform(scale,0,0,scale,0,0);
+    const step = this.intro.steps[this.intro.index] || {};
+    const transition = this.intro.transition;
+    const scene = transition ? transition.to : step.scene || "earth";
+    if (transition) {
+      this.drawIntroScene(ctx, transition.from);
+      const progress = Math.min(1, Math.max(0, transition.t));
+      ctx.globalAlpha = 1 - Math.pow(1 - progress, 3);
+      this.drawIntroScene(ctx, scene);
+      ctx.globalAlpha = 1;
+      this.drawSceneWarp(ctx, progress);
+    } else {
+      this.drawIntroScene(ctx, scene);
+      this.drawIntroApple(ctx);
+      this.drawIntroPerson(this.intro.playerX, this.intro.playerY, "player", step.frame);
+      this.drawIntroPerson(this.intro.newtonX, this.intro.newtonY, "newton", step.frame);
+      const speaker = step.speaker || "牛顿";
+      const x = speaker === "玩家" ? this.intro.playerX : this.intro.newtonX;
+      const y = speaker === "玩家" ? this.intro.playerY : this.intro.newtonY;
+      this.drawIntroBubble(x, y, step.text || "", step);
+      if (step.type === "choice") this.drawIntroChoices(ctx, step);
+      else if (step.type === "formula") this.drawIntroFormulaPanel(ctx, step);
+      this.drawIntroDraggedOption(ctx);
+      this.drawIntroFeedback(ctx);
+      ctx.fillStyle = "rgba(255,255,255,0.65)"; ctx.font = "12px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "center";
+      const appleHeld = this.intro.apple && this.intro.apple.state === "held";
+      ctx.fillText(appleHeld ? "按空格或点击苹果，让它落下" : step.type === "choice" ? "点击选择答案" : step.type === "formula" ? "拖拽符号到空位" : "按空格继续", this.width / 2, this.height - 16);
+    }
+    ctx.restore();
+  }
+  drawIntroScene(ctx, scene) {
+    const sky = ctx.createLinearGradient(0,0,0,this.height);
+    if (scene === "moon") { sky.addColorStop(0,"#05070f"); sky.addColorStop(0.62,"#101827"); sky.addColorStop(1,"#28313b"); }
+    else if (scene === "mars") { sky.addColorStop(0,"#1b080d"); sky.addColorStop(0.58,"#4d211b"); sky.addColorStop(1,"#8a4a34"); }
+    else { sky.addColorStop(0,"#5bb8e8"); sky.addColorStop(0.62,"#9bd5e2"); sky.addColorStop(1,"#e5d8a8"); }
+    ctx.fillStyle = sky; ctx.fillRect(0,0,this.width,this.height);
+    if (scene === "moon" || scene === "mars") {
+      for (let i = 0; i < 42; i += 1) {
+        const sx = (i * 173) % this.width, sy = (i * 97) % 430;
+        ctx.fillStyle = `rgba(255,255,255,${0.35 + (i % 5) * 0.1})`;
+        ctx.fillRect(sx, sy, i % 3 === 0 ? 2 : 1, i % 3 === 0 ? 2 : 1);
+      }
+    }
+    if (scene === "earth") {
+      ctx.fillStyle = "rgba(255,226,156,0.38)"; ctx.beginPath(); ctx.arc(820,150,76,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.beginPath(); ctx.ellipse(240,150,170,42,0,0,Math.PI*2); ctx.ellipse(620,210,220,36,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(87,147,118,0.22)"; ctx.beginPath(); ctx.moveTo(0,560); ctx.quadraticCurveTo(260,430,560,560); ctx.lineTo(560,560); ctx.closePath(); ctx.fill();
+    } else if (scene === "moon") {
+      ctx.fillStyle = "rgba(80,160,255,0.16)"; ctx.beginPath(); ctx.arc(760,120,42,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = "rgba(255,190,120,0.18)"; ctx.beginPath(); ctx.arc(760,150,60,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(120,52,40,0.28)"; ctx.beginPath(); ctx.moveTo(0,560); ctx.quadraticCurveTo(240,400,540,560); ctx.lineTo(540,560); ctx.closePath(); ctx.fill();
+    }
+    const ground = ctx.createLinearGradient(0,560,0,640);
+    if (scene === "moon") { ground.addColorStop(0,"#8e99a3"); ground.addColorStop(1,"#4d5660"); }
+    else if (scene === "mars") { ground.addColorStop(0,"#b96a4b"); ground.addColorStop(1,"#703c2c"); }
+    else { ground.addColorStop(0,"#6f9f5a"); ground.addColorStop(1,"#3d623f"); }
+    ctx.fillStyle = ground; ctx.fillRect(0,560,this.width,80);
+    ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fillRect(0,560,this.width,3);
+    ctx.fillStyle = "rgba(0,0,0,0.08)"; for (let i = 0; i < 8; i += 1) ctx.fillRect(40 + i * 125, 584 + (i % 3) * 12, 64, 3);
+    this.drawIntroGroundDetails(ctx, scene);
+    this.drawIntroRock(ctx, scene);
+    this.drawIntroDecor(scene);
+  }
+  drawIntroGroundDetails(ctx, scene) {
+    if (scene === "earth") {
+      ctx.fillStyle = "#8ed873";
+      ctx.fillRect(0, 560, this.width, 10);
+      ctx.strokeStyle = "#3f7439";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      for (let x = 8; x < this.width; x += 18) {
+        const tuft = hashString(`introearth:${x}`) % 7;
+        ctx.beginPath();
+        ctx.moveTo(x, 568);
+        ctx.lineTo(x - 3 + tuft, 557);
+        ctx.moveTo(x + 3, 568);
+        ctx.lineTo(x + 4 + tuft, 558);
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+      ctx.fillStyle = "#6d4d32";
+      ctx.fillRect(0, 574, this.width, 66);
+      for (let i = 0; i < 10; i += 1) {
+        const seed = hashString(`introearthdetail:${i}`);
+        const x = 24 + (seed % (this.width - 48));
+        const y = 588 + ((seed >> 3) % 42);
+        if (seed % 3 === 0) {
+          ctx.fillStyle = "#ed7f97";
+          for (let p = 0; p < 5; p += 1) {
+            const angle = (p / 5) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.ellipse(x + Math.cos(angle) * 4, y + Math.sin(angle) * 4, 2.5, 1.6, angle, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath();
+          ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "rgba(38,27,20,0.28)";
+          ctx.beginPath();
+          ctx.ellipse(x, y, 3 + (seed % 4), 2 + (seed % 3), seed % 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+
+    const dark = scene === "moon" ? "rgba(34,44,54,0.5)" : "rgba(89,38,28,0.48)";
+    const light = scene === "moon" ? "rgba(255,255,255,0.18)" : "rgba(255,185,140,0.18)";
+    for (let i = 0; i < 9; i += 1) {
+      const seed = hashString(`intro${scene}crater:${i}`);
+      const rx = 9 + (seed % 12);
+      const ry = Math.max(3, rx * 0.36);
+      const x = 34 + (seed % (this.width - 68));
+      const y = 586 + ((seed >> 3) % 46);
+      ctx.fillStyle = dark;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = light;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x - 2, y - 1, rx - 2, Math.max(1, ry - 1), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 26; i += 1) {
+      const seed = hashString(`intro${scene}soil:${i}`);
+      const x = 12 + (seed % (this.width - 24));
+      const y = 572 + ((seed >> 3) % 64);
+      ctx.fillStyle = scene === "moon" ? "rgba(20,28,36,0.15)" : "rgba(62,26,20,0.18)";
+      ctx.fillRect(x, y, 2 + (seed % 3), 1 + (seed % 2));
+    }
+  }
+  drawIntroRock(ctx, scene) {
+    const rockX = 340, rockY = 420, rockW = 170, rockH = 140;
+    const base = scene === "moon" ? "#7d8791" : scene === "mars" ? "#8e5543" : "#7b8b6f";
+    ctx.fillStyle = base; ctx.beginPath(); ctx.roundRect(rockX, rockY, rockW, rockH, 16); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.beginPath(); ctx.roundRect(rockX + 6, rockY + 5, rockW - 12, 24, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.22)"; ctx.lineWidth = 2; ctx.stroke();
+    if (scene === "earth") {
+      ctx.fillStyle = "#7bb267"; ctx.beginPath(); ctx.arc(352,422,7,0,Math.PI*2); ctx.arc(382,426,6,0,Math.PI*2); ctx.arc(480,424,7,0,Math.PI*2); ctx.fill();
+    } else if (scene === "moon") {
+      ctx.fillStyle = "rgba(40,48,58,0.35)"; ctx.beginPath(); ctx.arc(390,470,9,0,Math.PI*2); ctx.arc(458,520,7,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = "rgba(70,38,28,0.28)"; ctx.beginPath(); ctx.arc(420,500,12,0,Math.PI*2); ctx.arc(470,540,8,0,Math.PI*2); ctx.fill();
+    }
+  }
+  drawSceneWarp(ctx, progress) {
+    const p = Math.min(1, Math.max(0, progress));
+    const pulse = Math.sin(p * Math.PI);
+    ctx.fillStyle = `rgba(4,8,18,${(0.22 + pulse * 0.28).toFixed(3)})`;
+    ctx.fillRect(0,0,this.width,this.height);
+    ctx.save(); ctx.translate(this.width / 2, this.height / 2);
+    ctx.strokeStyle = `rgba(160,220,255,${(0.12 + pulse * 0.24).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 18; i += 1) {
+      const angle = (i / 18) * Math.PI * 2;
+      const r1 = 62 + Math.sin(this.intro.elapsed * 3.2 + i) * 12;
+      ctx.beginPath(); ctx.moveTo(Math.cos(angle) * r1, Math.sin(angle) * r1); ctx.lineTo(Math.cos(angle) * this.width * 0.72, Math.sin(angle) * this.width * 0.72); ctx.stroke();
+    }
+    ctx.restore();
+    const labels = { earth: "地球", moon: "月球", mars: "火星" };
+    const fromLabel = labels[this.intro.transition.from] || "地球";
+    const toLabel = labels[this.intro.transition.to] || "火星";
+    ctx.fillStyle = "#fff"; ctx.font = "700 24px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(`${fromLabel} → ${toLabel}`, this.width / 2, this.height / 2 - 12);
+    ctx.fillStyle = "rgba(255,255,255,0.78)"; ctx.font = "13px 'Microsoft YaHei', sans-serif";
+    ctx.fillText("穿越维度裂隙，法则锚定器正在同步新天体环境...", this.width / 2, this.height / 2 + 20);
+  }
+  drawIntroDecor(scene) {
+    const ctx = this.ctx;
+    if (scene === "earth") {
+      ctx.fillStyle = "#7fb069"; ctx.beginPath(); ctx.moveTo(0,560); ctx.quadraticCurveTo(140,470,310,560); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#5e4430"; ctx.lineWidth = 6; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(138,560); ctx.lineTo(138,484); ctx.moveTo(138,520); ctx.lineTo(122,498); ctx.moveTo(138,502); ctx.lineTo(154,484); ctx.stroke();
+      ctx.fillStyle = "#7baa62"; ctx.beginPath(); ctx.arc(138,458,18,0,Math.PI*2); ctx.arc(122,444,14,0,Math.PI*2); ctx.arc(154,444,14,0,Math.PI*2); ctx.arc(138,430,14,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.beginPath(); ctx.arc(126,438,7,0,Math.PI*2); ctx.fill();
+    } else if (scene === "moon") {
+      ctx.fillStyle = "#4aa8ff"; ctx.beginPath(); ctx.arc(760,120,24,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#7bd88f"; ctx.beginPath(); ctx.ellipse(750,112,9,6,0.4,0,Math.PI*2); ctx.ellipse(770,124,7,5,-0.3,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.beginPath(); ctx.ellipse(753,108,11,4,-0.25,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = "#b96a4b"; ctx.beginPath(); ctx.moveTo(120,560); ctx.quadraticCurveTo(240,440,360,560); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#c9815f"; ctx.beginPath(); ctx.moveTo(560,560); ctx.quadraticCurveTo(660,470,800,560); ctx.closePath(); ctx.fill();
+    }
+  }
+  drawIntroPerson(x, y, who, frameId) {
+    const ctx = this.ctx;
+    if (who === "player" && this.characterSpriteLoaded) { ctx.drawImage(this.characterSprite, 0, 0, 64, 64, x - 15, y - 44, 30, 44); return; }
+    if (who === "newton" && this.newtonImage && this.newtonImage.complete) {
+      const frame = (NEWTON_FRAMES.find((item) => item.id === frameId) || NEWTON_FRAMES[0]).index;
+      const col = (frame - 1) % NEWTON_FRAME_COLS; const row = Math.floor((frame - 1) / NEWTON_FRAME_COLS);
+      ctx.drawImage(this.newtonImage, col * NEWTON_FRAME_W, row * NEWTON_FRAME_H, NEWTON_FRAME_W, NEWTON_FRAME_H, x - 27, y - 88, 54, 88);
+    }
+  }
+  getWrappedLineCount(ctx, text, maxWidth, maxLines) {
+    const chars = Array.from(text || "");
+    let line = "", lines = 1;
+    for (const char of chars) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines += 1; line = char;
+        if (lines >= maxLines) return lines;
+      } else line = test;
+    }
+    return lines;
+  }
+  getIntroBubbleMetrics(step) {
+    const text = step.text || "";
+    const font = "'PingFang SC', 'Microsoft YaHei', sans-serif";
+    const ctx = this.ctx; ctx.save(); ctx.font = `700 18px ${font}`;
+    const charCount = Array.from(text).length;
+    const width = Math.min(760, Math.max(420, charCount * 17 + 80));
+    const lineCount = this.getWrappedLineCount(ctx, text, width - 56, 3);
+    ctx.restore();
+    const height = 100 + lineCount * 30;
+    const by = 36;
+    return { width, height, bx: (this.width - width) / 2, by, bottom: by + height, lineCount };
+  }
+  drawIntroBubble(x, y, text, step) {
+    const ctx = this.ctx;
+    const metrics = this.getIntroBubbleMetrics(step);
+    const { width, height, bx, by } = metrics;
+    const dark = step.scene === "moon" || step.scene === "mars";
+    const fill = dark ? "rgba(28,32,40,0.9)" : "rgba(247,248,250,0.94)";
+    const textColor = dark ? "#f5f5f7" : "#1d1d1f";
+    const muted = dark ? "rgba(255,255,255,0.62)" : "rgba(60,60,67,0.66)";
+    const accent = dark ? "#ffd166" : "#ff5f57";
+    const font = "'PingFang SC', 'Microsoft YaHei', sans-serif";
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.28)"; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12;
+    ctx.fillStyle = fill; ctx.beginPath(); ctx.roundRect(bx, by, width, height, 26); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = dark ? "rgba(255,255,255,0.24)" : "rgba(255,255,255,0.8)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.textAlign = "left";
+    ctx.fillStyle = accent; ctx.font = `700 15px ${font}`;
+    ctx.fillText(step.speaker || "牛顿", bx + 28, by + 34);
+    ctx.fillStyle = muted; ctx.font = `500 12px ${font}`;
+    ctx.fillText("剧情", bx + width - 72, by + 34);
+    ctx.strokeStyle = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx + 28, by + 48); ctx.lineTo(bx + width - 28, by + 48); ctx.stroke();
+    ctx.fillStyle = textColor; ctx.font = `700 18px ${font}`;
+    this.wrapIntroText(ctx, text, bx + 28, by + 72, width - 56, 30, 3);
+  }
+  drawIntroChoices(ctx, step) {
+    const cardW = 170, cardH = 58, gap = 12;
+    const metrics = this.getIntroBubbleMetrics(step);
+    const startX = (this.width - (3 * cardW + 2 * gap)) / 2, y = metrics.bottom + 16;
+    const dark = step.scene === "moon" || step.scene === "mars";
+    const fill = dark ? "rgba(38,42,52,0.92)" : "rgba(255,255,255,0.86)";
+    const textColor = dark ? "#f5f5f7" : "#1d1d1f";
+    const font = "'PingFang SC', 'Microsoft YaHei', sans-serif";
+    step.options.forEach((option, i) => {
+      const x = startX + i * (cardW + gap);
+      ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.18)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 20); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = this.intro.pressedIndex === i ? "#ffd166" : dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = textColor; ctx.font = `700 16px ${font}`; ctx.textAlign = "left";
+      ctx.fillText(option, x + 16, y + 36);
+      ctx.fillStyle = dark ? "#ffd166" : "#ff5f57"; ctx.font = `700 13px ${font}`;
+      ctx.fillText(`${i + 1}`, x + cardW - 34, y + 22);
+    });
+  }
+  drawIntroFormulaPanel(ctx, step) {
+    const slots = step.slots || [];
+    const metrics = this.getIntroBubbleMetrics(step);
+    const panelX = 100, panelY = metrics.bottom + 16, panelW = 760, panelH = 92;
+    const dark = step.scene === "moon" || step.scene === "mars";
+    const textColor = dark ? "#f5f5f7" : "#1d1d1f";
+    const font = "'PingFang SC', 'Microsoft YaHei', sans-serif";
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.16)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6;
+    ctx.fillStyle = dark ? "rgba(28,32,40,0.9)" : "rgba(255,255,255,0.82)";
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 22); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = dark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.textAlign = "left"; ctx.fillStyle = textColor; ctx.font = `600 14px ${font}`;
+    ctx.fillText("把符号拖到空位", panelX + 26, panelY + 28);
+    const slotW = Math.min(92, (panelW - 24 - (slots.length - 1) * 6) / slots.length);
+    const startX = panelX + 12, slotY = panelY + 28, slotH = 42;
+    slots.forEach((slot, i) => {
+      const x = startX + i * (slotW + 6);
+      const filled = this.intro.formulaFilled[i];
+      ctx.fillStyle = filled ? (dark ? "rgba(47,214,195,0.22)" : "rgba(47,214,195,0.16)") : (dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)");
+      ctx.beginPath(); ctx.roundRect(x, slotY, slotW, slotH, 12); ctx.fill();
+      ctx.strokeStyle = slot === "__" && !filled ? "#ffd166" : dark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = textColor; ctx.font = `700 16px ${font}`; ctx.textAlign = "center";
+      ctx.fillText(filled || slot, x + slotW / 2, slotY + 28);
+    });
+    const options = step.options || []; const gap = 10;
+    const cardW = Math.min(126, (this.width - 120) / options.length - gap);
+    const total = options.length * cardW + (options.length - 1) * gap;
+    const optionStart = (this.width - total) / 2, optionY = panelY + 120, optionH = 44;
+    options.forEach((option, i) => {
+      const x = optionStart + i * (cardW + gap);
+      const isDragging = this.intro.drag && this.intro.drag.optionIndex === i;
+      ctx.globalAlpha = isDragging ? 0.35 : 1;
+      ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.16)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = 5;
+      ctx.fillStyle = dark ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.9)";
+      ctx.beginPath(); ctx.roundRect(x, optionY, cardW, optionH, 16); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = textColor; ctx.font = `700 14px ${font}`; ctx.textAlign = "left";
+      ctx.fillText(option, x + 12, optionY + 28);
+      ctx.globalAlpha = 1;
+    });
+  }
+  drawIntroDraggedOption(ctx) {
+    const drag = this.intro && this.intro.drag;
+    if (!drag) return;
+    const step = this.intro.steps[this.intro.index];
+    const option = step && step.options[drag.optionIndex];
+    if (!option) return;
+    ctx.save(); ctx.globalAlpha = 0.94; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+    ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.roundRect(drag.x - 55, drag.y - 18, 110, 36, 16); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = "rgba(0,0,0,0.16)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = "#1d1d1f"; ctx.font = "700 15px 'PingFang SC', 'Microsoft YaHei', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(option, drag.x, drag.y + 5);
+  }
+  drawIntroFeedback(ctx) {
+    const feedback = this.intro && this.intro.feedback;
+    if (!feedback) return;
+    const t = Math.min(1, feedback.t / 0.18);
+    const pulse = 1 + Math.sin(feedback.t * 10) * 0.05;
+    ctx.save(); ctx.translate(this.width / 2, 330); ctx.scale(pulse, pulse); ctx.globalAlpha = t;
+    ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = "#ff5f57"; ctx.beginPath(); ctx.roundRect(-110, -28, 220, 56, 28); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "800 22px 'PingFang SC', 'Microsoft YaHei', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("再想想看", this.width / 2, 340);
+  }
+  wrapIntroText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
+    const chars = Array.from(text); let line = ""; let currentY = y;
+    let lines = 0;
+    for (const char of chars) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, currentY);
+        lines += 1; line = char; currentY += lineHeight;
+        if (lines >= maxLines) return;
+      } else line = test;
+    }
+    if (line) ctx.fillText(line, x, currentY);
   }
 
   dispose() {

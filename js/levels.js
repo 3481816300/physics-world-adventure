@@ -1,37 +1,89 @@
 const LEVEL_DEFS = {
   "1:1-1": {
     id: "1-1",
-    name: "初见 · 风起之地",
-    role: "教学关",
-    width: 1800,
+    name: "地月之间",
+    role: "知识关 · 重力",
+    width: 3000,
     height: 900,
     playerStart: { x: 120, y: 760 },
-    checkpoints: [{ x: 850, y: 790 }],
+    checkpoints: [{ x: 120, y: 760 }, { x: 1450, y: 790 }, { x: 2350, y: 790 }],
     platforms: [
-      { x: -80, y: 820, w: 680, h: 100, kind: "ground" },
-      { x: 700, y: 820, w: 1100, h: 100, kind: "ground" },
-      { x: 250, y: 700, w: 120, h: 24, kind: "platform" },
-      { x: 520, y: 650, w: 100, h: 24, kind: "platform" },
-      { x: 920, y: 680, w: 120, h: 24, kind: "platform" },
-      { x: 1200, y: 590, w: 100, h: 24, kind: "platform" },
-      { x: 1200, y: 750, w: 100, h: 24, kind: "platform" },
-      { x: 1550, y: 710, w: 120, h: 24, kind: "platform" }
+      { x: -80, y: -80, w: 3160, h: 80, kind: "ceiling" },
+      { x: -80, y: 820, w: 980, h: 100, kind: "earth" },
+      { x: 920, y: 820, w: 1120, h: 100, kind: "moon" },
+      { x: 2020, y: 820, w: 1060, h: 100, kind: "mars" },
+      { x: 260, y: 700, w: 120, h: 24, kind: "platform" },
+      { x: 460, y: 600, w: 120, h: 24, kind: "platform" },
+      { x: 660, y: 500, w: 120, h: 24, kind: "platform" },
+      { x: 1080, y: 700, w: 130, h: 24, kind: "platform" },
+      { x: 1300, y: 570, w: 130, h: 24, kind: "platform" },
+      { x: 1500, y: 430, w: 130, h: 24, kind: "platform" },
+      { x: 1720, y: 300, w: 150, h: 24, kind: "platform" },
+      { x: 1920, y: 390, w: 120, h: 24, kind: "platform" },
+      { x: 1830, y: 240, w: 72, h: 24, kind: "platform" },
+      { x: 2200, y: 650, w: 130, h: 24, kind: "platform" },
+      { x: 2450, y: 520, w: 130, h: 24, kind: "platform" },
+      { x: 2700, y: 400, w: 140, h: 24, kind: "platform" },
+      { x: 2880, y: 690, w: 100, h: 24, kind: "platform" }
     ],
-    boxes: [{ x: 430, y: 790, w: 34, h: 30, kind: "wood" }],
-    switches: [{ x: 560, y: 790, w: 44, h: 30, target: "door1", latch: true }],
-    doors: [{ id: "door1", x: 690, y: 700, w: 24, h: 120, open: false }],
+    boxes: [],
+    switches: [],
+    questionGates: [
+      {
+        id: "gate1",
+        x: 900,
+        y: 0,
+        w: 50,
+        h: 900,
+        question: "一名 50kg 的玩家站在地球上，g≈9.8N/kg，他的重量是多少？",
+        options: ["约 490N", "约 5.1N", "重量与 g 无关"],
+        answer: 0,
+        doorId: "door1"
+      },
+      {
+        id: "gate2",
+        x: 1650,
+        y: 0,
+        w: 50,
+        h: 900,
+        question: "从地球到达月球后，50kg 的玩家质量与重量会如何变化？",
+        options: ["质量不变，重量变小", "质量变小，重量不变", "质量和重量都变小"],
+        answer: 0,
+        doorId: "door2"
+      },
+      {
+        id: "gate3",
+        x: 2650,
+        y: 0,
+        w: 50,
+        h: 900,
+        question: "根据万有引力定律，重力系数 g 主要由什么决定？",
+        options: ["星球质量越大、半径越小，g 越大", "星球半径越大，g 越大", "g 与星球性质无关"],
+        answer: 0,
+        doorId: "door3"
+      }
+    ],
+    doors: [
+      { id: "door1", x: 900, y: 0, w: 50, h: 900, open: false },
+      { id: "door2", x: 1650, y: 0, w: 50, h: 900, open: false },
+      { id: "door3", x: 2650, y: 0, w: 50, h: 900, open: false }
+    ],
     stars: [
-      { x: 285, y: 655 },
-      { x: 950, y: 635 },
-      { x: 1590, y: 665 }
+      { x: 700, y: 455 },
+      { x: 1720, y: 255 },
+      { x: 2780, y: 355 }
     ],
-    fragment: { x: 565, y: 600 },
-    core: { x: 1670, y: 760 },
+    fragment: { x: 1830, y: 230 },
+    core: { x: 2930, y: 760 },
     spikes: [],
     enemies: [],
     springs: [],
     launchPads: [],
-    gravityZones: [],
+    gravityZones: [
+      { x: 920, y: 0, w: 1120, h: 900, scale: 0.1663, label: "月球" }
+      ,
+      { x: 2020, y: 0, w: 1120, h: 900, scale: 0.3786, label: "火星" }
+    ],
     movingPlatforms: []
   },
 
