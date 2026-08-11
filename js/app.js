@@ -550,6 +550,20 @@ const App = {
     this.clearCompletionTimer();
     UI.hideCompletion();
     if (!this.currentChapter || !this.currentLevel) return;
+    this.paused = false;
+    UI.showPause(false);
+    if (this.runtime && this.runtime.intro) {
+      this.runtime.startIntro(
+        this.currentChapter,
+        this.currentLevel,
+        getChapterIntroSteps(this.currentChapter, this.currentLevel),
+        () => this.finishStartLevel(this.currentChapter, this.currentLevel)
+      );
+      UI.updateHud(this.currentChapter, this.currentLevel, 0);
+      UI.setGameStatus("已重置到关卡起点");
+      Input.gameActive = false;
+      return;
+    }
     this.runtime.load(this.currentChapter, this.currentLevel);
     UI.updateHud(this.currentChapter, this.currentLevel, 0);
     UI.setGameStatus("已重置到关卡起点");
@@ -724,7 +738,7 @@ const App = {
     }
     UI.animateCharacterPreviews(dt);
 
-    if (this.screen === "game" && !this.paused && this.runtime && this.runtime.player) {
+    if (this.screen === "game" && !this.paused && this.runtime && (this.runtime.player || this.runtime.intro)) {
       this.runtime.update(dt, Input);
       this.runtime.render();
     }

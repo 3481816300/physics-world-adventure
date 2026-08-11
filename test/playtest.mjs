@@ -130,6 +130,22 @@ try {
     await client.send("Page.navigate", { url });
     await sleep(1200);
     await evaluate(client, `Save.unlockAdmin("HarryLI@20120622")`);
+    const introRender = await evaluate(client, `(() => {
+      const r = App.runtime;
+      if (!r || !r.intro) return { hasIntro: false };
+      const canvas = document.getElementById("gameCanvas");
+      const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      let nonBg = 0;
+      for (let i = 0; i < data.length; i += 400) {
+        if (data[i] !== 28 || data[i + 1] !== 42 || data[i + 2] !== 50) nonBg += 1;
+      }
+      return { hasIntro: true, index: r.intro.index, player: !!r.player, nonBg };
+    })()`);
+    console.log(`introRender: ${JSON.stringify(introRender)}`);
+    await evaluate(client, `(() => { const r = App.runtime; if (!r || !r.intro || !r.intro.steps.length) return; r.intro.index = Math.min(1, r.intro.steps.length - 1); App.togglePause(); document.getElementById("btn-restart").click(); })()`);
+    await sleep(400);
+    const restartIntro = await evaluate(client, `(() => { const r = App.runtime; return { hasIntro: !!r.intro, index: r.intro ? r.intro.index : -1, player: !!r.player, paused: App.paused }; })()`);
+    console.log(`restartIntro: ${JSON.stringify(restartIntro)}`);
     await evaluate(client, `App.skipChapterIntro()`);
     await sleep(500);
 
