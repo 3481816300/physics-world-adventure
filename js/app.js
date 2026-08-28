@@ -38,7 +38,7 @@ const App = {
       },
       onQuestion: (gate) => UI.openKnowledgeQuestion(gate),
       onQuestionAnswered: (correct) => {
-        if (!correct) UI.showToast("答案不对，再想想刚刚学到的定律");
+        if (!correct) return;
       },
       onComplete: (result) => {
         if (this.currentLevel) {
@@ -128,7 +128,7 @@ const App = {
     document.getElementById("btn-account").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-account-back").addEventListener("click", () => this.showTitle());
     document.getElementById("btn-onboard-login").addEventListener("click", () => UI.openLogin());
-    document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openContact());
+    document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openPurchase());
     document.getElementById("btn-onboard-guest").addEventListener("click", () => this.enterGuest());
     document.getElementById("btn-random-name").addEventListener("click", () => this.refreshRandomName());
     document.getElementById("btn-register-submit").addEventListener("click", () => this.registerAccount());
@@ -139,9 +139,24 @@ const App = {
     document.getElementById("btn-password-cancel").addEventListener("click", () => UI.hidePasswordModal());
     document.getElementById("btn-login-to-contact").addEventListener("click", () => {
       UI.hideLogin();
-      UI.openContact();
+      UI.openPurchase();
     });
     document.getElementById("btn-contact-close").addEventListener("click", () => UI.hideContact());
+    document.getElementById("btn-purchase-close").addEventListener("click", () => UI.hidePurchase());
+    document.getElementById("btn-purchase-contact").addEventListener("click", () => {
+      UI.hidePurchase();
+      UI.openContact();
+    });
+    document.getElementById("btn-open-redeem").addEventListener("click", () => UI.openRedeem());
+    document.getElementById("btn-redeem-submit").addEventListener("click", () => this.redeemCode());
+    document.getElementById("btn-redeem-cancel").addEventListener("click", () => UI.hideRedeem());
+    document.getElementById("redeemCode").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        this.redeemCode();
+      }
+    });
+    document.getElementById("btn-redeem-batch-submit").addEventListener("click", () => this.generateRedeemCodes());
+    document.getElementById("btn-redeem-batch-close").addEventListener("click", () => UI.hideRedeemBatch());
     document.getElementById("btn-support-close").addEventListener("click", () => UI.hideDevSupport());
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-background-skip").addEventListener("click", () => this.finishBackground());
@@ -174,8 +189,6 @@ const App = {
         this.leaveLevel();
       }
     });
-    document.getElementById("btn-simulate-complete").addEventListener("click", () => this.simulateComplete());
-
     document.getElementById("btn-admin").addEventListener("click", () => {
       if (Save.isAdmin()) {
         this.exitAdmin();
@@ -439,6 +452,81 @@ const App = {
     }
   },
 
+  togglePremium() {
+    if (!Save.isAdmin()) return;
+    const next = !Save.data.premium;
+    Save.setPremium(next, 12);
+    UI.renderAccount();
+    UI.showToast(next ? "已标记为付费用户" : "已撤销付费标记");
+  },
+
+  async redeemCode() {
+    if (Save.isGuest()) {
+      UI.hideRedeem();
+      UI.openLogin();
+      return;
+    }
+    const code = UI.refs.redeemCode.value.trim();
+    const error = UI.refs.redeemError;
+    if (!code) {
+      error.textContent = "请输入兑换码";
+      error.hidden = false;
+      return;
+    }
+
+    const button = document.getElementById("btn-redeem-submit");
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "验证中";
+    try {
+      const result = await Api.redeem(Save.serverToken, code);
+      Save.applyPremium(result.premium_until || result.premiumUntil);
+      UI.hideRedeem();
+      UI.renderAccount();
+      UI.showToast("兑换成功，完整版已解锁");
+      if (this.screen === "chapters") {
+        UI.renderChapters();
+      }
+      if (this.screen === "levels" && this.currentChapter) {
+        UI.renderLevels(this.currentChapter, this.currentIsFinal);
+      }
+    } catch (err) {
+      error.textContent = err.message || "兑换失败，请稍后再试";
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  },
+
+  openRedeemBatch() {
+    if (!Save.isAdmin()) return;
+    UI.openRedeemBatch();
+  },
+
+  async generateRedeemCodes() {
+    if (!Save.isAdmin()) return;
+    const count = Math.min(50, Math.max(1, Number(UI.refs.redeemBatchCount.value) || 1));
+    const error = UI.refs.redeemBatchError;
+    const result = UI.refs.redeemBatchResult;
+    const button = document.getElementById("btn-redeem-batch-submit");
+    button.disabled = true;
+    button.textContent = "生成中";
+    try {
+      const data = await Api.createRedeemCodes(count);
+      const codes = Array.isArray(data.codes) ? data.codes : [];
+      result.value = codes.join("\n");
+      error.hidden = true;
+      UI.showToast(`已生成 ${codes.length} 个兑换码`);
+    } catch (err) {
+      error.textContent = err.message || "生成失败";
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = "生成";
+    }
+  },
+
   async renameAccount(name) {
     if (Save.isGuest()) return;
     try {
@@ -541,7 +629,7 @@ const App = {
 
   finishStartLevel(chapter, level) {
     UI.updateHud(chapter, level, 0);
-    UI.setGameStatus("关卡内容待设计 · 可操作框架预览");
+    UI.setGameStatus("已进入法则碎片，抵达法则核心即可稳定");
     this.runtime.load(chapter, level);
     Input.gameActive = true;
   },
@@ -591,12 +679,6 @@ const App = {
     }
   },
 
-  simulateComplete() {
-    if (!this.currentLevel || !this.runtime || !this.runtime.teleportToCore()) return;
-    UI.showToast("已传送至法则核心附近");
-    UI.setGameStatus("触碰法则核心即可完成");
-  },
-
   clearCompletionTimer() {
     if (this.completionTimer) {
       clearTimeout(this.completionTimer);
@@ -613,15 +695,21 @@ const App = {
 
   answerKnowledge(index) {
     if (!this.runtime || !this.runtime.answerQuestion) return;
+    const gate = this.runtime.activeQuestion;
+    if (!gate) return;
     const correct = this.runtime.answerQuestion(index);
     if (correct) {
-      UI.closeKnowledgeQuestion();
+      UI.markKnowledgeAnswer(index, true);
+      UI.lockKnowledgeOptions();
+      setTimeout(() => UI.closeKnowledgeQuestion(), 900);
     } else {
       UI.markKnowledgeAnswer(index, false);
-      UI.showToast("答案不对，再想想刚刚学到的定律");
       if (this.runtime.dying) {
-        UI.closeKnowledgeQuestion();
-        UI.showToast("连续答错两次，重新锚定中");
+        UI.lockKnowledgeOptions();
+        setTimeout(() => UI.closeKnowledgeQuestion(), 900);
+      } else {
+        const selected = UI.refs.knowledgeOptions.children[index];
+        if (selected) selected.disabled = true;
       }
     }
   },

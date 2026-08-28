@@ -3,7 +3,7 @@ const path = require("path");
 
 const root = __dirname;
 const dist = path.join(root, "dist");
-const entries = ["index.html", "css", "js", "assets"];
+const entries = ["index.html", "css", "js", "assets", "CNAME"];
 
 function copyDir(from, to) {
   fs.mkdirSync(to, { recursive: true });

@@ -69,6 +69,8 @@ const Save = {
       purchasedSouvenirs: [],
       activeSkin: "default",
       equippedSouvenirs: [],
+      premium: false,
+      premiumUntil: null,
       pausedRun: null,
       lastChapter: 1,
       lastLevel: "1-1"
@@ -235,6 +237,32 @@ const Save = {
     return Boolean(this.data.difficultyChosen);
   },
 
+  isPremium() {
+    if (this.isAdmin()) return true;
+    if (!this.data.premium) return false;
+    const until = this.data.premiumUntil;
+    if (!until) return true;
+    return new Date(until).getTime() > Date.now();
+  },
+
+  setPremium(premium, months = 12) {
+    this.data.premium = Boolean(premium);
+    this.data.premiumUntil = premium
+      ? new Date(Date.now() + Number(months || 12) * 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+    this.save();
+    return true;
+  },
+
+  applyPremium(premiumUntil = null) {
+    this.data.premium = true;
+    this.data.premiumUntil = premiumUntil
+      ? new Date(premiumUntil).toISOString()
+      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    this.save();
+    return true;
+  },
+
   isAdmin() {
     return Boolean(this.data && this.data.adminUnlocked);
   },
@@ -337,8 +365,8 @@ const Save = {
 
   isChapterUnlocked(chapter) {
     if (this.isAdmin()) return true;
-    if (!this.isGuest()) return true;
     if (chapter.id === 1) return true;
+    if (!this.isPremium()) return false;
 
     const previousIndex = CHAPTERS.findIndex((item) => item.id === chapter.id) - 1;
     if (previousIndex < 0) return false;
@@ -350,16 +378,15 @@ const Save = {
 
   isFinalUnlocked() {
     if (this.isAdmin()) return true;
-    if (!this.isGuest()) return true;
+    if (!this.isPremium()) return false;
     const relativity = CHAPTERS.find((chapter) => chapter.id === 13);
     return Boolean(relativity) && this.isChapterCompleted(relativity);
   },
 
   isLevelUnlocked(chapter, level) {
     if (this.isAdmin()) return true;
-    if (this.isGuest()) {
-      return chapter.id === 1 && level.id === "1-1";
-    }
+    if (chapter.id === 1 && level.id === "1-1") return true;
+    if (!this.isPremium()) return false;
     if (this.data.difficulty === "hell" && level.role === "教学关") return false;
     if (chapter.id === FINAL_CHAPTER.id) {
       return this.isFinalUnlocked();

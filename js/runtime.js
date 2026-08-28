@@ -1413,7 +1413,7 @@ class LevelRuntime {
       ctx.font = "700 24px 'Microsoft YaHei', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("?", cx, gate.y + 70);
-      ctx.fillText("知识屏障", cx, gate.y + 106);
+      ctx.fillText("法则实验", cx, gate.y + 106);
       ctx.restore();
       for (let i = 0; i < 4; i += 1) {
         const py = gate.y + ((i * 213 + this.elapsed * 36) % gate.h);
@@ -1441,7 +1441,7 @@ class LevelRuntime {
     ctx.fillStyle = "#ffd166";
     ctx.font = "700 18px 'Microsoft YaHei', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("知识校验：请用刚学到的定律作答", this.width / 2, panelY + 34);
+    ctx.fillText("实验小结：请用刚学到的定律作答", this.width / 2, panelY + 34);
 
     ctx.fillStyle = "#fff";
     ctx.font = "15px 'Microsoft YaHei', sans-serif";
@@ -2010,7 +2010,7 @@ class LevelRuntime {
       this.newtonImage = new Image();
       this.newtonImage.src = NEWTON_SPRITE;
     }
-    this.intro = { chapter, levelMeta, steps: this.prepareIntroSteps(steps), index: 0, onDone, elapsed: 0, newtonX: 660, playerX: 420, playerY: 420, newtonY: 560, playerDescend: false, formulaIndex: 0, formulaWrong: 0, formulaFilled: [], pressedIndex: null, drag: null, feedback: null, done: false, transition: null, apple: null, appleScene: null };
+    this.intro = { chapter, levelMeta, steps: this.prepareIntroSteps(steps), index: 0, onDone, elapsed: 0, newtonX: 660, playerX: 420, playerY: 420, newtonY: 560, playerDescend: false, formulaIndex: 0, formulaWrong: 0, formulaFilled: [], pressedIndex: null, drag: null, feedback: null, choiceFeedback: null, done: false, transition: null, apple: null, appleScene: null };
   }
   finishIntro() {
     const intro = this.intro;
@@ -2120,8 +2120,12 @@ class LevelRuntime {
   handleIntroChoice(index) {
     const step = this.intro.steps[this.intro.index];
     if (!step) return;
-    if (step.answer === null || index === step.answer) this.advanceIntro();
-    else { this.intro.feedback = { text: "再想想看", t: 0 }; this.callbacks.onToast && this.callbacks.onToast("再想想看"); }
+    if (this.intro.choiceFeedback && this.intro.choiceFeedback.correct) return;
+    this.intro.choiceFeedback = {
+      index,
+      correct: step.answer === null || index === step.answer,
+      t: 0
+    };
   }
   handleIntroFormulaDrop(optionIndex, slotIndex) {
     const step = this.intro.steps[this.intro.index];
@@ -2163,6 +2167,15 @@ class LevelRuntime {
       intro.playerY = Math.min(560, intro.playerY + 240 * frame);
       if (intro.playerY >= 560) intro.playerDescend = false;
     }
+    if (intro.choiceFeedback) {
+      intro.choiceFeedback.t += frame;
+      if (intro.choiceFeedback.correct && intro.choiceFeedback.t >= 0.9) {
+        this.advanceIntro();
+      } else if (!intro.choiceFeedback.correct && intro.choiceFeedback.t >= 1.05) {
+        intro.choiceFeedback = null;
+      }
+      return;
+    }
     const apple = intro.apple;
     if (apple && apple.state === "held" && (input.wasPressed("Space") || input.wasPressed("Enter"))) {
       apple.state = "falling"; apple.vx = 14; apple.vy = 0;
@@ -2171,8 +2184,7 @@ class LevelRuntime {
     if (step.type === "choice") {
       for (let i = 1; i <= 3; i += 1) {
         if (input.wasPressed(`Digit${i}`) || input.wasPressed(`Numpad${i}`)) {
-          if (step.answer === null || i - 1 === step.answer) this.advanceIntro();
-          else this.callbacks.onToast && this.callbacks.onToast("再想想看");
+          this.handleIntroChoice(i - 1);
           return;
         }
       }
@@ -2197,6 +2209,7 @@ class LevelRuntime {
   }
   advanceIntro() {
     const intro = this.intro;
+    intro.choiceFeedback = null;
     const fromScene = (intro.steps[intro.index] || {}).scene || "earth";
     intro.index += 1; intro.formulaIndex = 0; intro.formulaWrong = 0;
     intro.formulaFilled = [];
@@ -2212,24 +2225,28 @@ class LevelRuntime {
     const intro = this.intro;
     if (intro.appleScene !== scene) {
       intro.appleScene = scene;
-      intro.apple = { scene, state: "held", x: 452, y: 390, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 };
+      intro.apple = { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 };
       return;
     }
     const apple = intro.apple;
     if (!apple) return;
     const gravity = scene === "moon" ? 320 : scene === "mars" ? 760 : 1900;
     if (apple.state === "held") {
-      apple.x = 452; apple.y = 390;
+      apple.x = 660; apple.y = 352;
       return;
     }
     if (apple.state === "falling") {
       apple.vy += gravity * frame;
-      apple.vx += apple.vx < 14 ? 10 * frame : 0;
       apple.x += apple.vx * frame;
       apple.y += apple.vy * frame;
       apple.rotation += (0.5 + Math.min(1.6, Math.abs(apple.vy) / 420)) * frame * 3.6;
       const groundY = 549;
-      if (apple.y >= groundY) {
+      const newtonHeadY = 468;
+      if (apple.bounces === 0 && apple.vy > 0 && apple.y >= newtonHeadY) {
+        apple.y = newtonHeadY;
+        apple.bounces += 1;
+        apple.vy = -Math.abs(apple.vy) * 0.22;
+      } else if (apple.y >= groundY) {
         apple.y = groundY;
         apple.bounces += 1;
         const bounce = scene === "moon" ? 0.16 : scene === "mars" ? 0.27 : 0.4;
@@ -2400,17 +2417,60 @@ class LevelRuntime {
     }
   }
   drawIntroRock(ctx, scene) {
-    const rockX = 340, rockY = 420, rockW = 170, rockH = 140;
+    const rockX = 300, rockY = 350, rockW = 250, rockH = 210;
     const base = scene === "moon" ? "#7d8791" : scene === "mars" ? "#8e5543" : "#7b8b6f";
-    ctx.fillStyle = base; ctx.beginPath(); ctx.roundRect(rockX, rockY, rockW, rockH, 16); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.beginPath(); ctx.roundRect(rockX + 6, rockY + 5, rockW - 12, 24, 12); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.22)"; ctx.lineWidth = 2; ctx.stroke();
+    const light = scene === "moon" ? "rgba(255,255,255,0.18)" : scene === "mars" ? "rgba(255,190,150,0.16)" : "rgba(255,255,255,0.14)";
+    const dark = scene === "moon" ? "rgba(28,36,46,0.24)" : scene === "mars" ? "rgba(60,28,20,0.26)" : "rgba(40,52,38,0.2)";
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.moveTo(rockX + 16, rockY + rockH);
+    ctx.quadraticCurveTo(rockX - 24, rockY + 132, rockX + 42, rockY + 104);
+    ctx.quadraticCurveTo(rockX + 22, rockY + 44, rockX + 92, rockY + 24);
+    ctx.quadraticCurveTo(rockX + 136, rockY - 12, rockX + 168, rockY + 44);
+    ctx.quadraticCurveTo(rockX + 212, rockY + 28, rockX + 224, rockY + 92);
+    ctx.quadraticCurveTo(rockX + 254, rockY + 140, rockX + 226, rockY + rockH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(10,14,18,0.3)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.moveTo(rockX + 46, rockY + 76);
+    ctx.quadraticCurveTo(rockX + 64, rockY + 34, rockX + 106, rockY + 30);
+    ctx.quadraticCurveTo(rockX + 132, rockY + 27, rockX + 128, rockY + 62);
+    ctx.quadraticCurveTo(rockX + 88, rockY + 74, rockX + 46, rockY + 76);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.moveTo(rockX + 178, rockY + 132);
+    ctx.quadraticCurveTo(rockX + 222, rockY + 148, rockX + 218, rockY + 190);
+    ctx.quadraticCurveTo(rockX + 208, rockY + 205, rockX + 170, rockY + 190);
+    ctx.quadraticCurveTo(rockX + 148, rockY + 170, rockX + 178, rockY + 132);
+    ctx.closePath();
+    ctx.fill();
+
     if (scene === "earth") {
-      ctx.fillStyle = "#7bb267"; ctx.beginPath(); ctx.arc(352,422,7,0,Math.PI*2); ctx.arc(382,426,6,0,Math.PI*2); ctx.arc(480,424,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#7bb267";
+      ctx.beginPath(); ctx.arc(374, 430, 8, 0, Math.PI * 2); ctx.arc(410, 444, 7, 0, Math.PI * 2); ctx.arc(490, 438, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#4e7c46"; ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(360, 500); ctx.lineTo(342, 452); ctx.moveTo(360, 474); ctx.lineTo(370, 458); ctx.stroke();
     } else if (scene === "moon") {
-      ctx.fillStyle = "rgba(40,48,58,0.35)"; ctx.beginPath(); ctx.arc(390,470,9,0,Math.PI*2); ctx.arc(458,520,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(40,48,58,0.4)";
+      ctx.beginPath(); ctx.ellipse(396, 462, 13, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(456, 508, 10, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(492, 438, 8, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.24)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(394, 460, 11, 4.5, 0, 0, Math.PI * 2); ctx.stroke();
     } else {
-      ctx.fillStyle = "rgba(70,38,28,0.28)"; ctx.beginPath(); ctx.arc(420,500,12,0,Math.PI*2); ctx.arc(470,540,8,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(70,38,28,0.34)";
+      ctx.beginPath(); ctx.ellipse(424, 486, 15, 6.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(478, 528, 11, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,185,140,0.24)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(422, 484, 13, 5.5, 0, 0, Math.PI * 2); ctx.stroke();
     }
   }
   drawSceneWarp(ctx, progress) {
@@ -2520,13 +2580,25 @@ class LevelRuntime {
     const font = "'PingFang SC', 'Microsoft YaHei', sans-serif";
     step.options.forEach((option, i) => {
       const x = startX + i * (cardW + gap);
+      const feedback = this.intro.choiceFeedback;
+      const feedbackForThis = feedback && feedback.index === i ? feedback : null;
       ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.18)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
       ctx.fillStyle = fill; ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 20); ctx.fill(); ctx.restore();
-      ctx.strokeStyle = this.intro.pressedIndex === i ? "#ffd166" : dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"; ctx.lineWidth = 1.5; ctx.stroke();
+      if (feedbackForThis) {
+        ctx.strokeStyle = feedbackForThis.correct ? "#2fd6a4" : "#ff5f57";
+        ctx.lineWidth = 5;
+      } else {
+        ctx.strokeStyle = this.intro.pressedIndex === i ? "#ffd166" : dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)";
+        ctx.lineWidth = 1.5;
+      }
+      ctx.stroke();
       ctx.fillStyle = textColor; ctx.font = `700 16px ${font}`; ctx.textAlign = "left";
       ctx.fillText(option, x + 16, y + 36);
-      ctx.fillStyle = dark ? "#ffd166" : "#ff5f57"; ctx.font = `700 13px ${font}`;
-      ctx.fillText(`${i + 1}`, x + cardW - 34, y + 22);
+      if (feedbackForThis) {
+        ctx.fillStyle = feedbackForThis.correct ? "#2fd6a4" : "#ff5f57";
+        ctx.font = `800 20px ${font}`;
+        ctx.fillText(feedbackForThis.correct ? "√" : "×", x + cardW - 38, y + 34);
+      }
     });
   }
   drawIntroFormulaPanel(ctx, step) {

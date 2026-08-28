@@ -2,7 +2,9 @@ dist/
 preview-*.png
 data/accounts.json
 data/sessions.json
+data/redeem_codes.json
 node_modules/
+.cloudflare-tunnel/
 个人信息.txt
 章节规划/
 assets/牛顿旧版.png

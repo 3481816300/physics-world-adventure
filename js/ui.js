@@ -78,6 +78,14 @@ const UI = {
       onboardingModal: document.getElementById("onboardingModal"),
       contactModal: document.getElementById("contactModal"),
       contactContent: document.getElementById("contactContent"),
+      purchaseModal: document.getElementById("purchaseModal"),
+      redeemModal: document.getElementById("redeemModal"),
+      redeemCode: document.getElementById("redeemCode"),
+      redeemError: document.getElementById("redeemError"),
+      redeemBatchModal: document.getElementById("redeemBatchModal"),
+      redeemBatchCount: document.getElementById("redeemBatchCount"),
+      redeemBatchResult: document.getElementById("redeemBatchResult"),
+      redeemBatchError: document.getElementById("redeemBatchError"),
       devSupportModal: document.getElementById("devSupportModal"),
       devSupportChapter: document.getElementById("devSupportChapter"),
       registerModal: document.getElementById("registerModal"),
@@ -108,8 +116,7 @@ const UI = {
       expertContent: document.getElementById("expertContent"),
       newtonCanvas: document.getElementById("newtonCanvas"),
       endPoemModal: document.getElementById("endPoemModal"),
-      endPoemText: document.getElementById("endPoemText"),
-      btnSimulateComplete: document.getElementById("btn-simulate-complete")
+      endPoemText: document.getElementById("endPoemText")
     };
     this.newtonAnimator = new NewtonAnimator(this.refs.newtonCanvas);
     this.newtonAnimator.load();
@@ -233,7 +240,11 @@ const UI = {
         return;
       }
       if (!unlocked) {
-        UI.showToast("请先完成上一章的章节 Boss");
+        if (!Save.isPremium() && chapter.id !== 1) {
+          UI.openPurchase();
+        } else {
+          UI.showToast("请先完成上一章的章节 Boss");
+        }
         return;
       }
       App.openLevels(chapter.id, isFinal);
@@ -277,8 +288,8 @@ const UI = {
           ? "可进入"
           : Save.data.difficulty === "hell" && level.role === "教学关"
             ? "炼狱模式已移除"
-            : Save.isGuest()
-              ? "登录账号解锁"
+            : !Save.isPremium()
+              ? "付费解锁"
               : "未解锁";
       }
 
@@ -288,7 +299,11 @@ const UI = {
 
       card.addEventListener("click", () => {
         if (!unlocked) {
-          UI.showToast(Save.isGuest() ? "游客模式仅可试玩第一章第一关，登录账号解锁完整内容" : "请先完成前一关");
+          if (!Save.isPremium()) {
+            UI.openPurchase();
+          } else {
+            UI.showToast("请先完成前一关");
+          }
           return;
         }
         App.startLevel(chapter.id, level.id, isFinal);
@@ -492,13 +507,15 @@ const UI = {
       card.className = "account-card";
       card.innerHTML = `
         <h3>游客模式</h3>
-        <p class="modal-copy">当前模式下不会保存游戏记录，只能试玩第一章第一关。登录账号可解锁完整内容。</p>
+        <p class="modal-copy">第一关免费，后续关卡需要购买完整版。当前游客模式不会保存游戏记录。</p>
         <div class="account-actions">
-          <button id="btn-account-contact" class="btn btn-primary" type="button">联系开发者获取账号</button>
+          <button id="btn-account-purchase" class="btn btn-primary" type="button">购买完整版</button>
+          <button id="btn-account-redeem" class="btn btn-ghost" type="button">兑换完整版</button>
           <button id="btn-account-login" class="btn btn-ghost" type="button">登录账号</button>
         </div>
       `;
-      card.querySelector("#btn-account-contact").addEventListener("click", () => UI.openContact());
+      card.querySelector("#btn-account-purchase").addEventListener("click", () => UI.openPurchase());
+      card.querySelector("#btn-account-redeem").addEventListener("click", () => UI.openRedeem());
       card.querySelector("#btn-account-login").addEventListener("click", () => UI.openLogin());
       panel.appendChild(card);
       this.renderSavedAccounts(panel);
@@ -515,6 +532,12 @@ const UI = {
         <button id="btn-save-nickname" class="btn btn-primary" type="button">保存昵称</button>
       </div>
       <div class="account-actions" style="margin-top:14px">
+        <strong>完整版：${Save.isAdmin() && !Save.data.premium ? "管理员模式" : Save.isPremium() ? "已购买" : "未购买"}</strong>
+        ${!Save.isPremium() && !Save.isAdmin() ? '<button id="btn-account-purchase" class="btn btn-primary" type="button">购买完整版</button>' : ""}
+        ${!Save.isPremium() && !Save.isAdmin() ? '<button id="btn-account-redeem" class="btn btn-ghost" type="button">兑换完整版</button>' : ""}
+        ${Save.isAdmin() ? `<button id="btn-account-premium-toggle" class="btn btn-ghost" type="button">${Save.data.premium ? "撤销付费标记" : "标记为已付费"}</button>` : ""}
+      </div>
+      <div class="account-actions" style="margin-top:14px">
         <button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>
         <button id="btn-account-switch" class="btn btn-ghost" type="button">登录另一个账号</button>
         ${Save.isAdmin() ? '<button id="btn-account-register-another" class="btn btn-ghost" type="button">注册另一个账号（管理员）</button>' : '<button id="btn-account-contact" class="btn btn-ghost" type="button">联系开发者获取账号</button>'}
@@ -522,11 +545,24 @@ const UI = {
       <div class="account-actions" style="margin-top:14px">
         <button id="btn-open-password" class="btn btn-primary" type="button">修改密码</button>
         <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
+        ${Save.isAdmin() ? '<button id="btn-account-generate-codes" class="btn btn-ghost" type="button">生成兑换码</button>' : ""}
       </div>
     `;
     card.querySelector("#btn-save-nickname").addEventListener("click", () => {
       App.renameAccount(card.querySelector("#accountNickname").value);
     });
+    const purchase = card.querySelector("#btn-account-purchase");
+    if (purchase) {
+      purchase.addEventListener("click", () => UI.openPurchase());
+    }
+    const redeem = card.querySelector("#btn-account-redeem");
+    if (redeem) {
+      redeem.addEventListener("click", () => UI.openRedeem());
+    }
+    const premiumToggle = card.querySelector("#btn-account-premium-toggle");
+    if (premiumToggle) {
+      premiumToggle.addEventListener("click", () => App.togglePremium());
+    }
     card.querySelector("#btn-account-logout").addEventListener("click", () => App.logoutAccount());
     card.querySelector("#btn-account-switch").addEventListener("click", () => UI.openLogin());
     const registerAnother = card.querySelector("#btn-account-register-another");
@@ -536,6 +572,10 @@ const UI = {
     const contact = card.querySelector("#btn-account-contact");
     if (contact) {
       contact.addEventListener("click", () => UI.openContact());
+    }
+    const generateCodes = card.querySelector("#btn-account-generate-codes");
+    if (generateCodes) {
+      generateCodes.addEventListener("click", () => App.openRedeemBatch());
     }
     card.querySelector("#btn-open-password").addEventListener("click", () => UI.openPasswordModal());
     card.querySelector("#btn-view-password").addEventListener("click", () => App.viewPassword());
@@ -653,15 +693,68 @@ const UI = {
     }, 200);
   },
 
-  openContact() {
+  openPurchase() {
+    this.refs.purchaseModal.hidden = false;
+    requestAnimationFrame(() => this.refs.purchaseModal.classList.add("is-open"));
+  },
+
+  hidePurchase() {
+    this.refs.purchaseModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.purchaseModal.hidden = true;
+    }, 200);
+  },
+
+  openRedeem() {
+    UI.hidePurchase();
+    if (Save.isGuest()) {
+      UI.openLogin();
+      UI.showToast("请先登录账号后兑换");
+      return;
+    }
+    this.refs.redeemCode.value = "";
+    this.refs.redeemError.hidden = true;
+    this.refs.redeemModal.hidden = false;
+    requestAnimationFrame(() => this.refs.redeemModal.classList.add("is-open"));
+    setTimeout(() => this.refs.redeemCode.focus(), 80);
+  },
+
+  hideRedeem() {
+    this.refs.redeemModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.redeemModal.hidden = true;
+    }, 200);
+  },
+
+  openRedeemBatch() {
+    if (!Save.isAdmin()) return;
+    this.refs.redeemBatchCount.value = "1";
+    this.refs.redeemBatchResult.value = "";
+    this.refs.redeemBatchError.hidden = true;
+    this.refs.redeemBatchModal.hidden = false;
+    requestAnimationFrame(() => this.refs.redeemBatchModal.classList.add("is-open"));
+  },
+
+  hideRedeemBatch() {
+    this.refs.redeemBatchModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.redeemBatchModal.hidden = true;
+    }, 200);
+  },
+
+  openContact(title = "联系开发者获取账号") {
     const channels = [
       "📩 咨询邮箱：3481816300@qq.com",
       "💬 咨询微信：15156525860",
       "💬 咨询QQ：3481816300",
       "暂不支持电话咨询，敬请谅解"
     ];
+    document.getElementById("contactTitle").textContent = title;
+    const intro = title === "购买完整版"
+      ? "<p>第一关免费。解锁后续全部关卡需要购买完整版。</p><p>购买后请联系开发者，管理员会为你标记为已付费用户。</p>"
+      : "<p>本游戏为商业付费游戏。如需获取完整版本、了解售价、购买流程或授权范围，请通过官方渠道咨询。</p>";
     this.refs.contactContent.innerHTML = `
-      <p>本游戏为商业付费游戏。如需获取完整版本、了解售价、购买流程或授权范围，请通过官方渠道咨询。</p>
+      ${intro}
       ${channels.map((channel) => `<div class="contact-channel">${channel}</div>`).join("")}
       <p>请简要说明你的需求，例如：个人使用 / 团队使用、设备平台等，方便我快速为你解答。</p>
       <p>所有付费相关仅通过官方渠道沟通，不存在其他代理；请确认沟通对象为本人后再进行后续操作，谨防诈骗。</p>
@@ -757,7 +850,7 @@ const UI = {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "knowledge-option";
-      button.innerHTML = `<span class="option-key">${index + 1}</span><span>${option}</span>`;
+      button.textContent = option;
       button.addEventListener("click", () => App.answerKnowledge(index));
       container.appendChild(button);
     });
@@ -780,6 +873,12 @@ const UI = {
     if (!button) return;
     button.classList.toggle("is-correct", correct);
     button.classList.toggle("is-wrong", !correct);
+  },
+
+  lockKnowledgeOptions() {
+    Array.from(this.refs.knowledgeOptions.children).forEach((button) => {
+      button.disabled = true;
+    });
   },
 
   openBackground() {
@@ -817,23 +916,13 @@ const UI = {
       chapter,
       onDone,
       step: 0,
-      steps: level && level.id === "1-1" ? [
-        { type: "text", text: "苹果的背叛：牛顿正死死盯着一颗摇摇欲坠的苹果。", frame: "idle-dress" },
-        { type: "text", text: "苹果坠向地面。牛顿问：是什么看不见的手，把它拉向地面？", frame: "apple-smell" },
-        { type: "choice", text: "牛顿：你看见了，告诉我，是什么让苹果落向地面？", frame: "point-sky", question: "你认为，是什么让苹果落向地面的？", options: ["它成熟了，所以掉下来", "地球在吸引它", "它自己想下去"], answer: null },
-        { type: "text", text: "牛顿：假设是地球在作祟。那我们把苹果带到月球，它会怎样？", frame: "walk-1" },
-        { type: "text", text: "月球表面。牛顿：松手吧，看看月亮女神如何对待苹果。", frame: "space-idle" },
-        { type: "choice", text: "苹果缓慢落下。牛顿：你观察到了什么？", frame: "moon-jump", question: "月球上的苹果说明，那股拉它的力量发生了什么变化？", options: ["力量消失了", "力量变小了", "力量变大了"], answer: 1 },
-        { type: "choice", text: "牛顿：你能跳六米高。月球的拉之力大约是地球的几分之一？", frame: "yellow-planet", question: "月球的拉之力大约是地球的几分之一？", options: ["二分之一", "六分之一", "十分之一"], answer: 1 },
-        { type: "text", text: "牛顿：把每单位质量受到的拉之力命名为重力系数 g。地球 g≈9.8，月球 g≈1.63。", frame: "clipboard" },
-        { type: "text", text: "牛顿：为什么地球的 g 这么大？我们去更稳重的火星看看。", frame: "rocket-fire" },
-        { type: "choice", text: "火星表面，三颗大小相同的铁球。牛顿：怎么找出最重的地球货？", frame: "space-walk", question: "三颗铁球手感相同，如何找出最重的那颗？", options: ["逐一捡起，掂量最沉的", "踢得最远的就是", "先生锈的就是"], answer: 0 },
-        { type: "formula", frame: "think", text: "牛顿：质量 m 是物体自己的事，g 是星球的事。把它们拼成重量 G。", formula: { slots: ["G", "=", "__", "×", "__"], answers: ["m", "g"], parts: ["m", "g", "+", "−"] } },
-        { type: "text", text: "牛顿：G = mg！现在解决最后一个问题：这个 g 到底是谁定的？", frame: "clipboard" },
-        { type: "choice", text: "牛顿：万有引力。两个物体之间的引力与什么有关？", frame: "point-sky", question: "两个物体间的万有引力大小，和什么有关？", options: ["和颜色有关", "和质量与距离有关", "只和距离有关"], answer: 1 },
-        { type: "formula", frame: "rocket-up", text: "牛顿：把宇宙密码拼出来。F = [?] × (m₁×m₂) / [??]", formula: { slots: ["F", "=", "__", "×", "(m₁×m₂)", "/", "__"], answers: ["G", "r²"], parts: ["G", "g", "r", "r²", "+"] } },
-        { type: "text", text: "牛顿：F = G×m₁×m₂/r²。质量越大，引力越猛；距离越近，引力越狂。再会，我的搭档。", frame: "idle-dress" }
-      ] : this.buildGenericSteps(chapter),
+      steps: level && level.id === "1-1"
+        ? LEVEL_INTRO_STEPS.map((step) => {
+            const mapped = { ...step, text: `${step.speaker === "玩家" ? "玩家" : "牛顿"}：${step.text}` };
+            if (step.type === "choice") mapped.question = step.question || step.text;
+            return mapped;
+          })
+        : this.buildGenericSteps(chapter),
     };
     this.refs.expertPortrait.textContent = expert.name.slice(0, 1);
     if (this.newtonAnimator) {
@@ -876,7 +965,6 @@ const UI = {
         } else {
           button.classList.add("is-wrong");
           button.disabled = true;
-          UI.showToast("再想想看");
         }
       });
     });
@@ -930,7 +1018,6 @@ const UI = {
           } else {
             option.classList.add("is-wrong");
             option.disabled = true;
-            UI.showToast("再想想看");
           }
         });
       });
@@ -1052,7 +1139,6 @@ const UI = {
   setAdminBadges(visible) {
     this.refs.adminBadge.hidden = !visible;
     this.refs.adminBadgeLevels.hidden = !visible;
-    this.refs.btnSimulateComplete.hidden = !visible;
     this.refs.btnExitAdmin.hidden = !visible;
     this.refs.btnExitAdminLevels.hidden = !visible;
     this.refs.btnAdmin.textContent = visible ? "退出管理员模式" : "管理员模式";

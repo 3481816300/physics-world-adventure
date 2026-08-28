@@ -17,7 +17,9 @@ const Api = {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const message = data.message || (data.error && data.error.message) || "Supabase 请求失败";
+      const message = data.code === "PGRST202"
+        ? "服务器兑换功能尚未启用，请稍后再试或联系开发者"
+        : data.message || (data.error && data.error.message) || "Supabase 请求失败";
       throw new Error(message);
     }
     return data;
@@ -55,7 +57,7 @@ const Api = {
     }
     return this.request("/api/register", {
       method: "POST",
-      body: { nickname, password }
+      body: { nickname, password, adminPassword: this.ADMIN_REGISTER_KEY }
     });
   },
 
@@ -127,6 +129,35 @@ const Api = {
     return this.request("/api/save", {
       method: "POST",
       body: { token, saveData }
+    });
+  },
+
+  redeem(token, code) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("redeem_code", {
+        p_token: token,
+        p_code: code
+      });
+    }
+    return this.request("/api/redeem", {
+      method: "POST",
+      body: { token, code }
+    });
+  },
+
+  createRedeemCodes(quantity = 1) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("create_redeem_codes", {
+        p_admin_password: this.ADMIN_REGISTER_KEY,
+        p_quantity: quantity
+      });
+    }
+    return this.request("/api/redeem-codes", {
+      method: "POST",
+      body: {
+        adminPassword: this.ADMIN_REGISTER_KEY,
+        quantity
+      }
     });
   }
 };

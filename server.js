@@ -7,10 +7,12 @@ const root = __dirname;
 const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(root, "data");
 const accountsFile = path.join(dataDir, "accounts.json");
 const namesFile = path.join(dataDir, "name_pool.json");
+const redeemCodesFile = path.join(dataDir, "redeem_codes.json");
 const port = Number(process.env.PORT || 8000);
 const host = process.env.HOST || "0.0.0.0";
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 const pendingNameTtlMs = 30 * 60 * 1000;
+const ADMIN_PASSWORD = "HarryLI@20120622";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -33,6 +35,9 @@ function ensureDataFiles() {
   }
   if (!fs.existsSync(namesFile)) {
     fs.writeFileSync(namesFile, "[]", "utf8");
+  }
+  if (!fs.existsSync(redeemCodesFile)) {
+    fs.writeFileSync(redeemCodesFile, "{}", "utf8");
   }
 }
 
@@ -64,6 +69,35 @@ function getAllNames() {
 
 function nameKey(name) {
   return String(name || "").normalize("NFKC").trim().toLowerCase();
+}
+
+function normalizeAdminInput(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function normalizeCode(code) {
+  return String(code || "")
+    .normalize("NFKC")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+function makeRedeemCode() {
+  const part = () => crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `WL-${part()}-${part()}-${part()}`;
+}
+
+function getRedeemCodes() {
+  const data = readJson(redeemCodesFile);
+  return data && typeof data === "object" ? data : {};
+}
+
+function saveRedeemCodes(codes) {
+  writeJson(redeemCodesFile, codes);
 }
 
 function hashPassword(password, salt) {
@@ -155,8 +189,11 @@ const server = http.createServer(async (request, response) => {
         const body = await readBody(request);
         const nickname = String(body.nickname || "").trim();
         const password = String(body.password || "");
+        if (normalizeAdminInput(body.adminPassword) !== normalizeAdminInput(ADMIN_PASSWORD)) {
+          return sendJson(response, 403, { error: "仅管理员模式可注册账号" });
+        }
         if (!nickname || nickname.length > 16 || password.length < 4) {
-          return sendJson(response, 400, { error: "昵称不能为空，密码至少 4 位" });
+          return sendJson(response, 400, { error: "昵称不能为空或超过16字，密码至少 4 位" });
         }
         const accounts = getAccounts();
         const key = nameKey(nickname);
@@ -283,6 +320,58 @@ const server = http.createServer(async (request, response) => {
         account.saveData = normalizeSaveData(body.saveData);
         saveAccounts(accounts);
         return sendJson(response, 200, { ok: true });
+      }
+
+      if (request.method === "POST" && urlPath === "/api/redeem-codes") {
+        const body = await readBody(request);
+        if (normalizeAdminInput(body.adminPassword) !== normalizeAdminInput(ADMIN_PASSWORD)) {
+          return sendJson(response, 403, { error: "仅管理员模式可生成兑换码" });
+        }
+        const quantity = Math.min(50, Math.max(1, Number(body.quantity) || 1));
+        const codes = getRedeemCodes();
+        const created = [];
+        while (created.length < quantity) {
+          const code = makeRedeemCode();
+          if (codes[code]) continue;
+          codes[code] = {
+            code,
+            status: "unused",
+            createdAt: new Date().toISOString()
+          };
+          created.push(code);
+        }
+        saveRedeemCodes(codes);
+        return sendJson(response, 200, { ok: true, codes: created });
+      }
+
+      if (request.method === "POST" && urlPath === "/api/redeem") {
+        const body = await readBody(request);
+        const session = getSession(body.token);
+        if (!session) return sendJson(response, 401, { error: "登录已失效" });
+        const accounts = getAccounts();
+        const account = accounts[nameKey(session.nickname)];
+        if (!account) return sendJson(response, 404, { error: "账号不存在" });
+
+        const code = normalizeCode(body.code);
+        const codes = getRedeemCodes();
+        const record = codes[code];
+        const expired = record && record.expiresAt && new Date(record.expiresAt).getTime() < Date.now();
+        if (!record || record.status !== "unused" || expired) {
+          return sendJson(response, 400, { error: "兑换码无效或已被使用" });
+        }
+
+        const premiumUntil = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        record.status = "used";
+        record.consumedBy = account.nickname;
+        record.consumedAt = new Date().toISOString();
+        codes[code] = record;
+        account.saveData = Object.assign({}, account.saveData || {}, {
+          premium: true,
+          premiumUntil
+        });
+        saveAccounts(accounts);
+        saveRedeemCodes(codes);
+        return sendJson(response, 200, { ok: true, premium: true, premiumUntil });
       }
     } catch (error) {
       return sendJson(response, 400, { error: error.message || "请求失败" });

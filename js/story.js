@@ -21,20 +21,23 @@ const END_POEM = [
 
 const LEVEL_INTRO_STEPS = [
   { type: "text", scene: "earth", speaker: "牛顿", text: "苹果的背叛：牛顿正死死盯着一颗摇摇欲坠的苹果。", frame: "idle-dress" },
-  { type: "text", scene: "earth", speaker: "牛顿", text: "苹果坠向地面。是什么看不见的手，把它拉向地面？", frame: "apple-smell" },
-  { type: "choice", scene: "earth", speaker: "玩家", text: "你认为，是什么让苹果落向地面的？", frame: "point-sky", options: ["它成熟了，所以掉下来", "地球在吸引它", "它自己想下去"], answer: null },
-  { type: "text", scene: "earth", speaker: "牛顿", text: "假设是地球在作祟。那我们把苹果带到月球，它会怎样？", frame: "walk-1" },
-  { type: "text", scene: "moon", speaker: "牛顿", text: "月球表面。松手吧，看看月亮女神如何对待苹果。", frame: "space-idle" },
-  { type: "choice", scene: "moon", speaker: "玩家", text: "苹果缓慢落下。月球上的苹果说明力量发生了什么变化？", frame: "moon-jump", options: ["力量消失了", "力量变小了", "力量变大了"], answer: 1 },
-  { type: "choice", scene: "moon", speaker: "玩家", text: "月球的拉之力大约是地球的几分之一？", frame: "yellow-planet", options: ["二分之一", "六分之一", "十分之一"], answer: 1 },
-  { type: "text", scene: "moon", speaker: "牛顿", text: "把每单位质量受到的拉之力命名为重力系数 g。地球 g≈9.8，月球 g≈1.63。", frame: "clipboard" },
-  { type: "text", scene: "mars", speaker: "牛顿", text: "为什么地球的 g 这么大？我们去更稳重的火星看看。", frame: "rocket-fire" },
-  { type: "choice", scene: "mars", speaker: "玩家", text: "三颗铁球手感相同，如何找出最重的那颗？", frame: "space-walk", options: ["逐一捡起，掂量最沉的", "踢得最远的就是", "先生锈的就是"], answer: 0 },
-  { type: "formula", scene: "mars", speaker: "牛顿", text: "把质量 m 和星球 g 拼成重量 G。", frame: "think", slots: ["G", "=", "__", "×", "__"], options: ["m", "g", "+", "−"], answers: ["m", "g"] },
-  { type: "text", scene: "earth", speaker: "牛顿", text: "G = mg！现在解决最后一个问题：这个 g 到底是谁定的？", frame: "clipboard" },
-  { type: "choice", scene: "earth", speaker: "玩家", text: "两个物体间的万有引力大小，和什么有关？", frame: "point-sky", options: ["和颜色有关", "和质量与距离有关", "只和距离有关"], answer: 1 },
-  { type: "formula", scene: "earth", speaker: "牛顿", text: "把宇宙密码拼出来。F = [?] × (m₁×m₂) / [??]", frame: "rocket-up", slots: ["F", "=", "__", "×", "(m₁×m₂)", "/", "__"], options: ["G", "g", "r", "r²", "+"], answers: ["G", "r²"] },
-  { type: "text", scene: "earth", speaker: "牛顿", text: "F = G×m₁×m₂/r²。质量越大，引力越猛；距离越近，引力越狂。再会，我的搭档。", frame: "idle-dress" }
+  { type: "text", scene: "earth", speaker: "牛顿", text: "苹果坠落，不是因为它“想下去”，而是地球对它有引力。", frame: "apple-smell" },
+  { type: "choice", scene: "earth", speaker: "玩家", text: "先观察同一个苹果在地球松开。", frame: "point-sky", question: "你看到苹果怎样运动？", options: ["一直往上飞", "向下落", "悬在空中"], answer: 1 },
+  { type: "text", scene: "moon", speaker: "牛顿", text: "现在做控制变量实验：苹果还是同一个，质量没变，只把地点换成月球。", frame: "walk-1" },
+  { type: "text", scene: "moon", speaker: "牛顿", text: "松手吧，看看月球上的苹果。", frame: "space-idle" },
+  { type: "choice", scene: "moon", speaker: "玩家", text: "苹果落下更慢了。这说明什么？", frame: "moon-jump", question: "苹果质量没变，为什么落得更慢？", options: ["月球引力更小", "苹果质量变小了", "苹果不想落了"], answer: 0 },
+  { type: "text", scene: "mars", speaker: "牛顿", text: "再换到火星，同一颗苹果。火星比月球重，苹果落得比月球快。", frame: "rocket-fire" },
+  { type: "choice", scene: "mars", speaker: "玩家", text: "现在能判断 g 和谁有关了吗？", frame: "space-walk", question: "同一物体在不同星球受到引力不同，主要因为？", options: ["星球性质不同", "苹果质量变了", "颜色不同"], answer: 0 },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "我们把星球对每 1 kg 质量产生的引力大小叫做重力系数 g。地球 g≈9.8，月球 g≈1.63，火星 g≈3.71。", frame: "clipboard" },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "接下来区分质量和重量。质量是物体自己的固有属性，不随星球改变；重量是它受到的引力大小，会随 g 改变。", frame: "think" },
+  { type: "choice", scene: "moon", speaker: "玩家", text: "1 kg 的货物从地球带到月球，质量还是 1 kg，但它受的引力变小。", frame: "yellow-planet", question: "月球上货物会怎样？", options: ["质量不变，重量变小", "质量变小，重量不变", "质量和重量都变小"], answer: 0 },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "科学家把结果写成公式：G = mg。G 是重量，m 是质量，g 是所在星球的引力系数。", frame: "clipboard" },
+  { type: "choice", scene: "earth", speaker: "牛顿", text: "G = mg：质量 m 乘上星球引力 g，就是重量 G。明白了吗？", frame: "think", question: "你理解 G = mg 了吗？", options: ["明白了，继续", "再讲一遍"], answer: 0 },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "为什么不同星球 g 不同？控制变量：先固定质量，只比较两个星球的大小和远近。", frame: "point-sky" },
+  { type: "choice", scene: "earth", speaker: "玩家", text: "万有引力大小和什么有关？", frame: "point-sky", question: "两个物体之间的引力大小，和什么有关？", options: ["和颜色有关", "和质量与距离有关", "只和距离有关"], answer: 1 },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "公式是 F = G×m₁×m₂/r²。F 是引力，m₁、m₂ 是两个物体的质量，r 是距离，G 是万有引力常量。", frame: "rocket-up" },
+  { type: "choice", scene: "earth", speaker: "牛顿", text: "质量越大，引力越强；距离越近，引力越强。明白了吗？", frame: "think", question: "你理解万有引力公式了吗？", options: ["明白了，继续", "再讲一遍"], answer: 0 },
+  { type: "text", scene: "earth", speaker: "牛顿", text: "所以 g 不是凭空出现的：星球质量越大、半径越小，表面引力就越大。再会，我的搭档。", frame: "idle-dress" }
 ];
 
 function getChapterIntroSteps(chapter, level) {

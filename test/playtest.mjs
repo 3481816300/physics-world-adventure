@@ -414,19 +414,6 @@ try {
   );
   console.log(`saveResume: ${JSON.stringify({ savedState, resumedState })}`);
 
-  await client.send("Page.navigate", { url: `${BASE_URL}?run=${Date.now()}#level=1:1-1` });
-  await sleep(900);
-  await evaluate(client, `Save.unlockAdmin("HarryLI@20120622")`);
-  await evaluate(client, `document.getElementById("btn-simulate-complete").click()`);
-  await sleep(150);
-  const teleportState = await evaluate(
-    client,
-    `({ x: App.runtime.player.x, y: App.runtime.player.y, coreX: App.runtime.core.x, coreY: App.runtime.core.y, completed: App.runtime.completed })`
-  );
-  await sleep(600);
-  const teleportAfter = await evaluate(client, `({ completed: App.runtime.completed })`);
-  console.log(`teleport: ${JSON.stringify({ teleportState, teleportAfter })}`);
-
   console.log(JSON.stringify(results, null, 2));
   client.close();
 } finally {

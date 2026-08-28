@@ -1,89 +1,60 @@
-# 付费用户方案
+# 付费与兑换流程
 
-## 目标
+## 商品
 
-只让已付费玩家玩完整游戏。推荐结构：
+- 免费试玩：第一章第 1 关
+- 早期完整版：¥9.9
+- 正式完整版：预计 ¥19.9
 
-- 免费玩家可以玩第 1 章作为试玩
-- 付费玩家解锁全部章节
-- 也可以在页面最前面直接加付费墙，不让免费玩家进入游戏
+店铺地址：https://pay.ldxp.cn/shop/3DPJRWIT
 
-## 推荐支付渠道
+如果链动小铺需要押金，可以换用这些低门槛渠道：
 
-### 面向全球
+- 面包多：适合卖数字商品和卡密，支付链路简单，通常不需要押金。
+- 爱发电：适合 B 站/创作者，可以做赞助和数字商品。
+- 微信/QQ 收款 + 手动发码：零押金、零平台费，但需要人工处理。
+- 闲鱼：零押金，适合小额售卖，但自动化程度低。
 
-- **Stripe Payment Link**：最简单，不需要自己做结算页面
-- **Lemon Squeezy**：适合卖数字商品，平台代收税
-- **Paddle**：适合全球销售，平台处理税务和发票
+游戏已经支持“输入兑换码解锁”，所以无论换哪个店铺，只要店铺能导出卡密，就把卡密导入 `redeem_codes` 表即可。
 
-### 面向中国
+## 当前流程
 
-- **微信支付**
-- **支付宝**
-
-微信支付和支付宝通常需要：
-
-- 企业资质
-- 域名备案
-- 签约支付商户号
-
-如果是个人开发者，前期建议先用 Stripe 或 Lemon Squeezy 做海外版本。
-
-## 推荐流程
-
-1. 玩家注册账号
-2. 玩家点击“购买完整版”
-3. 跳转到支付页面
-4. 支付成功后，支付平台调用 Webhook
-5. Webhook 在 Supabase 里把该玩家标记为 `premium`
-6. 游戏端登录时检查 `premium`
-7. 付费玩家进入完整游戏，免费玩家进入试玩或付费墙
-
-## 数据库
-
-`supabase/schema.sql` 已经加入：
-
-- `players.premium`：是否付费
-- `players.premium_until`：会员到期时间
-- `payments`：支付记录
+1. 玩家打开店铺购买完整版。
+2. 店铺支付完成后展示兑换码（卡密）。
+3. 玩家登录游戏账号。
+4. 玩家在“兑换完整版”中输入兑换码。
+5. Supabase `redeem_code` RPC 核销兑换码，并把当前账号标记为 `premium`。
+6. 当前账号立即解锁全部已发布章节；后续换设备登录仍保持已购买状态。
 
 ## 技术实现
 
-支付平台会发送 Webhook，例如 Stripe：
+`supabase/schema.sql` 已包含：
 
-```json
-{
-  "type": "checkout.session.completed",
-  "data": {
-    "object": {
-      "id": "cs_xxx",
-      "metadata": {
-        "player_id": "玩家ID"
-      }
-    }
-  }
-}
-```
+- `redeem_codes`：兑换码库存与核销状态
+- `redeem_code(p_token, p_code)`：玩家兑换
+- `create_redeem_codes(p_admin_password, p_quantity)`：管理员生成测试兑换码
+- `players.premium` / `players.premium_until`：账号付费状态
 
-Supabase Edge Function 收到后执行：
+如果项目已经部署过数据库，只执行增量迁移：
 
 ```sql
-update players
-set premium = true, premium_until = now() + interval '1 year'
-where id = '玩家ID';
+-- supabase/migrations/20260824_redeem_codes.sql
 ```
 
-前端登录后读取：
+正式售卖时，建议把店铺生成的卡密批量导入 `redeem_codes` 表：
 
-```text
-premium = true
+```sql
+insert into public.redeem_codes (code, amount, expires_at)
+values
+('店铺卡密1', 9.90, null),
+('店铺卡密2', 9.90, null);
 ```
 
-然后解锁全部章节。
+管理员模式在账号页可以生成测试兑换码，用于本地验证；真实店铺卡密仍以店铺发卡数据为准。
 
-## 建议
+## 注意事项
 
-- 不要把支付密钥放进 GitHub Pages 前端
-- Webhook 必须放在 Supabase Edge Function 或独立后端
-- 正式上线前先设置测试支付，验证完整流程
-- 可以加入“兑换码”功能，先通过外部渠道卖兑换码，玩家在游戏里输入后解锁，这样最简单
+- 不要把 Supabase service key 放进前端。
+- 兑换码只能使用一次，换账号后同一兑换码不可重复兑换。
+- 兑换码按账号解锁，不绑定设备。
+- 后续接入自动支付回调时，可以把 `redeem_codes` 替换成支付平台 Webhook + 订单号校验。
