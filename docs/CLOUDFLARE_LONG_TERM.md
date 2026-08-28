@@ -7,6 +7,23 @@
 - Tunnel ID：47d7ad0d-753b-4d45-9d1f-60a3b314f3e6
 - 配置文件：`.cloudflare-tunnel/wulv.yml`
 
+当前版本已推送到 GitHub `main`，GitHub Actions 已成功构建 Pages。
+
+- GitHub Pages：https://3481816300.github.io/physics-world-adventure/
+- GitHub Pages 自定义域名：`wulvyuanzheng.dpdns.org` 已设置
+- 仓库内已包含 `CNAME`，构建产物也会带上 `CNAME`
+
+## Cloudflare DNS
+
+还需要在 Cloudflare 里把 `wulvyuanzheng.dpdns.org` 指向 GitHub Pages：
+
+- 类型：CNAME
+- 名称：`wulvyuanzheng`
+- 目标：`3481816300.github.io`
+- 代理状态：建议先选 DNS only
+
+如果配置了 `CLOUDFLARE_API_TOKEN`，我可以用 Cloudflare API 自动创建这条 CNAME。
+
 ## 一键启动
 
 ```powershell
