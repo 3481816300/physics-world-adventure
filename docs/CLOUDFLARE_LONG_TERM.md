@@ -1,11 +1,12 @@
-# Cloudflare Tunnel 长期部署
+# 长期部署状态
 
-当前项目使用 named tunnel 固定域名：
+当前已切换为 GitHub Pages + Cloudflare DNS，不再依赖本机：
 
 - 公网地址：https://wulvyuanzheng.dpdns.org/
-- 本地服务：http://127.0.0.1:8000
-- Tunnel ID：47d7ad0d-753b-4d45-9d1f-60a3b314f3e6
-- 配置文件：`.cloudflare-tunnel/wulv.yml`
+- GitHub Pages：https://3481816300.github.io/physics-world-adventure/
+- Cloudflare DNS：CNAME `wulvyuanzheng` → `3481816300.github.io`
+
+本地 Cloudflare Tunnel 配置已保留在 `.cloudflare-tunnel/wulv.yml`，但不再是站点访问路径。
 
 当前版本已推送到 GitHub `main`，GitHub Actions 已成功构建 Pages。
 
@@ -22,7 +23,7 @@
 - 目标：`3481816300.github.io`
 - 代理状态：建议先选 DNS only
 
-如果配置了 `CLOUDFLARE_API_TOKEN`，我可以用 Cloudflare API 自动创建这条 CNAME。
+这条 CNAME 已通过 Cloudflare API 创建。
 
 ## 一键启动
 
