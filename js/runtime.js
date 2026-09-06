@@ -2223,9 +2223,16 @@ class LevelRuntime {
   }
   updateIntroApple(frame, scene) {
     const intro = this.intro;
+    const step = intro.steps[intro.index] || {};
     if (intro.appleScene !== scene) {
       intro.appleScene = scene;
-      intro.apple = { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 };
+      intro.apple = step.dropApple
+        ? { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 }
+        : null;
+      return;
+    }
+    if (!step.dropApple && intro.apple && intro.apple.state !== "rolling") {
+      intro.apple = null;
       return;
     }
     const apple = intro.apple;

@@ -10,9 +10,11 @@ const namesFile = path.join(dataDir, "name_pool.json");
 const redeemCodesFile = path.join(dataDir, "redeem_codes.json");
 const port = Number(process.env.PORT || 8000);
 const host = process.env.HOST || "0.0.0.0";
-const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
+const sessionTtlMs = 3650 * 24 * 60 * 60 * 1000;
 const pendingNameTtlMs = 30 * 60 * 1000;
 const ADMIN_PASSWORD = "HarryLI@20120622";
+const OWNER_NICKNAME = "爱因斯坦未来继承人";
+const DEFAULT_ACCOUNT_PASSWORD = "Aa123456";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -213,6 +215,7 @@ const server = http.createServer(async (request, response) => {
           nickname,
           salt,
           passwordHash: hashPassword(password, salt),
+          visiblePassword: password,
           createdAt: Date.now(),
           defaultName: wasPending ? nickname : null,
           assignedAt: wasPending ? Date.now() : null,
@@ -239,6 +242,67 @@ const server = http.createServer(async (request, response) => {
       if (request.method === "POST" && urlPath === "/api/logout") {
         const body = await readBody(request);
         if (body.token) sessions.delete(body.token);
+        return sendJson(response, 200, { ok: true });
+      }
+
+      if (request.method === "GET" && urlPath === "/api/owner/list") {
+        const session = getSession(url.searchParams.get("token"));
+        if (!session) return sendJson(response, 401, { error: "登录已失效" });
+        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可管理账号" });
+        const accounts = Object.values(getAccounts()).map((account) => ({
+          nickname: account.nickname,
+          password: account.visiblePassword || null,
+          premium: Boolean(account.saveData && account.saveData.premium),
+          is_owner: account.nickname === OWNER_NICKNAME
+        }));
+        return sendJson(response, 200, { accounts });
+      }
+
+      if (request.method === "POST" && urlPath === "/api/owner/create") {
+        const body = await readBody(request);
+        const session = getSession(body.token);
+        if (!session) return sendJson(response, 401, { error: "登录已失效" });
+        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可注册账号" });
+        const accounts = getAccounts();
+        let nickname = "";
+        const used = new Set(Object.values(accounts).map((account) => nameKey(account.nickname)));
+        const available = getAllNames().filter((name) => !used.has(nameKey(name)) && !pendingNames.has(nameKey(name)));
+        if (available.length) {
+          nickname = available[Math.floor(Math.random() * available.length)];
+        } else {
+          do {
+            nickname = `玩家${Math.floor(100000 + Math.random() * 900000)}`;
+          } while (used.has(nameKey(nickname)));
+        }
+        const key = nameKey(nickname);
+        pendingNames.delete(key);
+        const salt = crypto.randomBytes(12).toString("hex");
+        accounts[key] = {
+          nickname,
+          salt,
+          passwordHash: hashPassword(DEFAULT_ACCOUNT_PASSWORD, salt),
+          visiblePassword: DEFAULT_ACCOUNT_PASSWORD,
+          createdAt: Date.now(),
+          defaultName: null,
+          assignedAt: null,
+          saveData: {}
+        };
+        saveAccounts(accounts);
+        return sendJson(response, 200, { nickname, password: DEFAULT_ACCOUNT_PASSWORD });
+      }
+
+      if (request.method === "POST" && urlPath === "/api/owner/delete") {
+        const body = await readBody(request);
+        const session = getSession(body.token);
+        if (!session) return sendJson(response, 401, { error: "登录已失效" });
+        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可注销账号" });
+        const nickname = String(body.nickname || "").trim();
+        if (nameKey(nickname) === nameKey(OWNER_NICKNAME)) {
+          return sendJson(response, 400, { error: "所有者账号不可注销" });
+        }
+        const accounts = getAccounts();
+        delete accounts[nameKey(nickname)];
+        saveAccounts(accounts);
         return sendJson(response, 200, { ok: true });
       }
 
@@ -288,6 +352,7 @@ const server = http.createServer(async (request, response) => {
         }
         account.salt = crypto.randomBytes(12).toString("hex");
         account.passwordHash = hashPassword(newPassword, account.salt);
+        account.visiblePassword = newPassword;
         saveAccounts(accounts);
         return sendJson(response, 200, { ok: true });
       }

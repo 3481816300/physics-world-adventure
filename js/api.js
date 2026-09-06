@@ -159,5 +159,35 @@ const Api = {
         quantity
       }
     });
+  },
+
+  ownerListAccounts(token) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("owner_list_accounts", { p_token: token });
+    }
+    return this.request(`/api/owner/list?token=${encodeURIComponent(token)}`);
+  },
+
+  ownerCreateAccount(token) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("owner_create_account", { p_token: token });
+    }
+    return this.request("/api/owner/create", {
+      method: "POST",
+      body: { token }
+    });
+  },
+
+  ownerDeleteAccount(token, nickname) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("owner_delete_account", {
+        p_token: token,
+        p_nickname: nickname
+      });
+    }
+    return this.request("/api/owner/delete", {
+      method: "POST",
+      body: { token, nickname }
+    });
   }
 };

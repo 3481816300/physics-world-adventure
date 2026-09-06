@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>物理世界奇遇记</title>
+  <title>物律远征</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,9 +13,8 @@
     <section id="screen-title" class="screen is-active" data-screen="title">
       <div class="title-shell">
         <p class="eyebrow">法则修复局 · 特勤终端</p>
-        <h1 class="title-name">物理世界奇遇记</h1>
+        <h1 class="title-name">物律远征</h1>
         <p class="title-sub">进入维度碎片，稳定失衡的法则核心</p>
-        <div class="difficulty-selector" id="difficultySelector" role="group" aria-label="游戏难度"></div>
         <div class="title-actions">
           <button class="btn btn-primary" id="btn-start" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
@@ -40,9 +39,9 @@
           <button class="btn btn-ghost" id="btn-resume-save" type="button" hidden>继续暂存进度</button>
           <button class="btn btn-ghost btn-clear-save" id="btn-clear-save" type="button">清空记录</button>
         </div>
-        <p class="title-version">ALPHA · 框架预览</p>
+        <p class="title-version">物律远征 · 第一章可玩</p>
       </div>
-      <button class="admin-button" id="btn-admin" type="button" title="管理员模式">管理员模式</button>
+      <button class="admin-button" id="btn-admin" type="button" title="管理员模式" hidden>管理员模式</button>
     </section>
 
     <section id="screen-chapters" class="screen" data-screen="chapters">
@@ -137,15 +136,8 @@
           </div>
         </div>
         <div class="howto-section">
-          <h3>模式</h3>
-          <p>简单模式：完成第 1-9 章即视为完整通关。</p>
-          <p>完整模式：解锁全部隐藏章节与终章。</p>
-          <p>炼狱模式：取消教学关，难度与资源限制提高。</p>
-        </div>
-        <div class="howto-section">
           <h3>当前版本</h3>
-          <p>本版本为初始框架预览：章节、关卡槽位、存档、管理员模式、占位运行层均已就绪。</p>
-          <p>每关具体内容后续按设计逐关填充。</p>
+          <p>第一章已可玩：包含重力教学、知识实验与章节 Boss。更多章节将随版本更新逐步开放。</p>
         </div>
       </div>
     </section>
@@ -250,22 +242,13 @@
       </div>
     </div>
 
-    <div id="firstRunModal" class="modal-backdrop" hidden>
-      <div class="modal first-run-modal" role="dialog" aria-modal="true" aria-labelledby="firstRunTitle">
-        <h2 id="firstRunTitle">选择游戏难度</h2>
-        <p class="modal-copy">请选择你的冒险难度。选择后无法再次更改，除非清空全部游玩记录。</p>
-        <div class="first-run-options" id="firstRunOptions"></div>
-        <p class="modal-error" id="firstRunError" hidden>请选择一个难度</p>
-      </div>
-    </div>
-
     <div id="onboardingModal" class="modal-backdrop" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
         <h2 id="onboardingTitle">选择游玩方式</h2>
         <p class="modal-copy">第一关免费。后续关卡需要购买完整版；游客模式不会保存游戏记录。</p>
         <div class="onboarding-actions">
           <button class="btn btn-primary" id="btn-onboard-login" type="button">登录</button>
-          <button class="btn btn-ghost" id="btn-onboard-contact" type="button">购买完整版</button>
+          <button class="btn btn-ghost" id="btn-onboard-contact" type="button">购买 / 赞助</button>
         </div>
         <div class="onboarding-guest">
           <button class="btn btn-danger" id="btn-onboard-guest" type="button">不了，谢谢</button>
@@ -289,9 +272,10 @@
         <div class="purchase-content">
           <div class="purchase-price"><strong>¥9.9</strong><span>早期完整版 · 后续章节免费更新</span></div>
           <p class="modal-copy">第一关免费试玩。购买后在店铺页面领取兑换码，回到游戏内输入即可解锁当前账号的全部已发布内容。</p>
-          <a class="support-link" href="https://pay.ldxp.cn/shop/3DPJRWIT" target="_blank" rel="noopener">去店铺购买</a>
-          <button class="btn btn-primary" id="btn-open-redeem" type="button">已有兑换码？输入兑换码</button>
-          <button class="btn btn-ghost" id="btn-purchase-contact" type="button">联系开发者咨询</button>
+          <p class="modal-copy">支持《物律远征》可以通过下方赞助页面，或直接联系开发者获取账号。</p>
+          <a class="support-link" href="https://ifdian.net/a/aystwljcr" target="_blank" rel="noopener">爱发电赞助</a>
+          <a class="support-link" href="https://space.bilibili.com/589748677?spm_id_from=333.1007.0.0" target="_blank" rel="noopener">B 站充电</a>
+          <button class="btn btn-ghost" id="btn-purchase-contact" type="button">联系开发者</button>
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="btn-purchase-close" type="button">关闭</button>
@@ -391,6 +375,19 @@
       </div>
     </div>
 
+    <div id="ownerAccountsModal" class="modal-backdrop" hidden>
+      <div class="modal owner-modal" role="dialog" aria-modal="true" aria-labelledby="ownerAccountsTitle">
+        <h2 id="ownerAccountsTitle">所有者管理</h2>
+        <p class="modal-copy">这里可以查看服务器全部账号、注册新账号或注销账号。</p>
+        <div class="owner-account-list" id="ownerAccountsList"></div>
+        <textarea id="ownerWelcomeText" class="redeem-result owner-welcome" readonly hidden></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="btn-owner-create" type="button">注册新账号</button>
+          <button class="btn btn-ghost" id="btn-owner-close" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div id="knowledgeModal" class="modal-backdrop knowledge-backdrop" hidden>
       <div class="modal knowledge-modal" role="dialog" aria-modal="true" aria-labelledby="knowledgeTitle">
         <p class="knowledge-kicker">法则实验</p>
@@ -407,8 +404,7 @@
         <h2 id="backgroundTitle">背景设定</h2>
         <div class="story-text" id="backgroundText"></div>
         <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-background-continue" type="button">继续</button>
-          <button class="btn btn-ghost" id="btn-background-skip" type="button">跳过</button>
+          <button class="btn btn-primary" id="btn-background-continue" type="button">确定</button>
         </div>
       </div>
     </div>

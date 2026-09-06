@@ -112,24 +112,13 @@ try {
 
   await client.send("Page.navigate", { url: `${BASE_URL}?run=${Date.now()}` });
   await sleep(900);
-  const firstRunResult = await evaluate(
-    client,
-    `(() => {
-      const before = Save.isDifficultyLocked();
-      App.confirmFirstRun("normal");
-      const after = Save.isDifficultyLocked();
-      const disabled = Array.from(document.querySelectorAll(".difficulty-btn")).every((button) => button.disabled);
-      return { before, after, disabled };
-    })()`
-  );
-  console.log(`firstRun: ${JSON.stringify(firstRunResult)}`);
 
   const results = [];
   for (const levelId of LEVELS) {
     const url = `${BASE_URL}?run=${Date.now()}#level=1:${levelId}`;
     await client.send("Page.navigate", { url });
     await sleep(1200);
-    await evaluate(client, `Save.unlockAdmin("HarryLI@20120622")`);
+    await evaluate(client, `Save.setServerSession("爱因斯坦未来继承人", "test-token", {}, "Aa123456")`);
     const introRender = await evaluate(client, `(() => {
       const r = App.runtime;
       if (!r || !r.intro) return { hasIntro: false };
@@ -266,10 +255,11 @@ try {
 
   await client.send("Page.navigate", { url: `${BASE_URL}?run=${Date.now()}` });
   await sleep(900);
+  await evaluate(client, `Save.setServerSession("爱因斯坦未来继承人", "test-token", {}, "Aa123456")`);
   const adminResult = await evaluate(
     client,
     `(() => {
-      const unlocked = Save.unlockAdmin("HarryLI@20120622");
+      const unlocked = Save.isAdmin();
       App.showChapters();
       return {
         unlocked,

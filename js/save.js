@@ -2,9 +2,12 @@ const SERVER_TOKEN_KEY = "physics-server-token";
 const SERVER_ACCOUNTS_KEY = "physics-server-accounts";
 const SERVER_CACHE_KEY = "physics-server-cache";
 const SERVER_NICKNAME_KEY = "physics-server-nickname";
+const SERVER_PASSWORD_KEY = "physics-server-password";
 const GUEST_SAVE_KEY = "physics-guest-save-v1";
 const ONBOARD_KEY = "physics-onboarded";
 const ADMIN_PASSWORD = "HarryLI@20120622";
+const OWNER_NICKNAME = "爱因斯坦未来继承人";
+const DEFAULT_ACCOUNT_PASSWORD = "Aa123456";
 
 function normalizeAdminInput(value) {
   return String(value || "")
@@ -27,7 +30,17 @@ const Save = {
     this.serverNickname = "游客";
     this.serverAccounts = {};
     try {
-      this.serverAccounts = JSON.parse(localStorage.getItem(SERVER_ACCOUNTS_KEY) || "{}");
+      const raw = JSON.parse(localStorage.getItem(SERVER_ACCOUNTS_KEY) || "{}") || {};
+      const cleaned = {};
+      const seen = new Set();
+      Object.values(raw).reverse().forEach((account) => {
+        const key = String(account.nickname || "").toLowerCase();
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          cleaned[account.token] = account;
+        }
+      });
+      this.serverAccounts = cleaned;
     } catch {
       this.serverAccounts = {};
     }
@@ -37,9 +50,13 @@ const Save = {
       if (token) {
         const cached = localStorage.getItem(SERVER_CACHE_KEY);
         this.mode = "server";
-        this.serverToken = token;
+      this.serverToken = token;
         this.serverNickname = localStorage.getItem(SERVER_NICKNAME_KEY) || "玩家1";
+        this.serverPassword = localStorage.getItem(SERVER_PASSWORD_KEY);
         this.data = Object.assign(this.defaultData(), cached ? JSON.parse(cached) : {});
+        if (this.serverNickname === OWNER_NICKNAME) {
+          this.data.premium = true;
+        }
         return;
       }
     } catch {
@@ -82,6 +99,7 @@ const Save = {
       try {
         localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
         localStorage.setItem(SERVER_NICKNAME_KEY, this.serverNickname);
+        localStorage.setItem(SERVER_PASSWORD_KEY, this.serverPassword || "");
         this.persistServerAccounts();
       } catch {
         // storage unavailable
@@ -113,14 +131,24 @@ const Save = {
   },
 
   setServerSession(nickname, token, saveData, password = null) {
+    const deduped = {};
+    Object.values(this.serverAccounts || {}).forEach((account) => {
+      if (account.nickname !== nickname) deduped[account.token] = account;
+    });
+    this.serverAccounts = deduped;
     this.mode = "server";
     this.serverToken = token;
     this.serverNickname = nickname;
     this.serverPassword = password;
     this.data = Object.assign(this.defaultData(), saveData || {});
+    if (nickname === OWNER_NICKNAME) {
+      this.data.premium = true;
+      this.data.premiumUntil = this.data.premiumUntil || "2099-01-01T00:00:00.000Z";
+    }
     this.serverAccounts[token] = {
       nickname,
       token,
+      password,
       saveData: this.data,
       addedAt: Date.now()
     };
@@ -128,6 +156,7 @@ const Save = {
       localStorage.setItem(SERVER_TOKEN_KEY, token);
       localStorage.setItem(SERVER_NICKNAME_KEY, nickname);
       localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+      localStorage.setItem(SERVER_PASSWORD_KEY, password || "");
       this.persistServerAccounts();
     } catch {
       // storage unavailable
@@ -143,6 +172,7 @@ const Save = {
     this.serverToken = null;
     this.serverNickname = "游客";
     this.serverPassword = null;
+    localStorage.removeItem(SERVER_PASSWORD_KEY);
     this.serverAccounts = this.serverAccounts || {};
     this.data = this.defaultData();
     try {
@@ -165,11 +195,17 @@ const Save = {
     this.mode = "server";
     this.serverToken = account.token;
     this.serverNickname = account.nickname;
+    this.serverPassword = account.password || null;
     this.data = Object.assign(this.defaultData(), account.saveData || {});
+    if (account.nickname === OWNER_NICKNAME) {
+      this.data.premium = true;
+      this.data.premiumUntil = this.data.premiumUntil || "2099-01-01T00:00:00.000Z";
+    }
     try {
       localStorage.setItem(SERVER_TOKEN_KEY, account.token);
       localStorage.setItem(SERVER_NICKNAME_KEY, account.nickname);
       localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(this.data));
+      localStorage.setItem(SERVER_PASSWORD_KEY, account.password || "");
     } catch {
       // storage unavailable
     }
@@ -189,6 +225,7 @@ const Save = {
   },
 
   renameActiveAccount(name) {
+    if (this.serverNickname === OWNER_NICKNAME) return this.serverNickname;
     const normalized = String(name || "").trim().slice(0, 16) || "玩家1";
     this.serverNickname = normalized;
     if (this.serverToken && this.serverAccounts[this.serverToken]) {
@@ -264,29 +301,19 @@ const Save = {
   },
 
   isAdmin() {
-    return Boolean(this.data && this.data.adminUnlocked);
+    return !this.isGuest() && this.serverNickname === OWNER_NICKNAME;
   },
 
   unlockAdmin(password) {
-    const ok = normalizeAdminInput(password) === normalizeAdminInput(ADMIN_PASSWORD);
-    if (ok) {
-      this.data.adminUnlocked = true;
-      this.save();
-    }
-    return ok;
+    return this.isAdmin();
   },
 
   disableAdmin() {
-    this.data.adminUnlocked = false;
-    this.save();
   },
 
   getVisibleChapters() {
     if (this.isAdmin()) return CHAPTERS;
     if (!this.isGuest()) return CHAPTERS;
-    if (this.data.difficulty === "simple") {
-      return CHAPTERS.filter((chapter) => chapter.id <= 9);
-    }
     return CHAPTERS;
   },
 
@@ -387,7 +414,6 @@ const Save = {
     if (this.isAdmin()) return true;
     if (chapter.id === 1 && level.id === "1-1") return true;
     if (!this.isPremium()) return false;
-    if (this.data.difficulty === "hell" && level.role === "教学关") return false;
     if (chapter.id === FINAL_CHAPTER.id) {
       return this.isFinalUnlocked();
     }

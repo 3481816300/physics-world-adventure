@@ -102,6 +102,9 @@ const UI = {
       passwordNew: document.getElementById("passwordNew"),
       passwordConfirm: document.getElementById("passwordConfirm"),
       passwordModalError: document.getElementById("passwordModalError"),
+      ownerAccountsModal: document.getElementById("ownerAccountsModal"),
+      ownerAccountsList: document.getElementById("ownerAccountsList"),
+      ownerWelcomeText: document.getElementById("ownerWelcomeText"),
       knowledgeModal: document.getElementById("knowledgeModal"),
       knowledgeQuestion: document.getElementById("knowledgeQuestion"),
       knowledgeOptions: document.getElementById("knowledgeOptions"),
@@ -132,6 +135,7 @@ const UI = {
 
   renderDifficultySelector() {
     const container = this.refs.difficultySelector;
+    if (!container) return;
     container.innerHTML = "";
     const locked = Save.isDifficultyLocked();
     DIFFICULTY_MODES.forEach((mode, index) => {
@@ -158,7 +162,7 @@ const UI = {
     this.buildMapBase(svg);
 
     const visibleChapters = Save.getVisibleChapters().concat(
-      Save.data.difficulty !== "simple" && Save.isFinalUnlocked() ? [FINAL_CHAPTER] : []
+      Save.isFinalUnlocked() ? [FINAL_CHAPTER] : []
     );
     visibleChapters.forEach((chapter, index) => {
       const position = MAP_NODE_POSITIONS[index];
@@ -286,11 +290,9 @@ const UI = {
       } else {
         meta.textContent = unlocked
           ? "可进入"
-          : Save.data.difficulty === "hell" && level.role === "教学关"
-            ? "炼狱模式已移除"
-            : !Save.isPremium()
-              ? "付费解锁"
-              : "未解锁";
+          : !Save.isPremium()
+            ? "付费解锁"
+            : "未解锁";
       }
 
       card.appendChild(title);
@@ -507,18 +509,16 @@ const UI = {
       card.className = "account-card";
       card.innerHTML = `
         <h3>游客模式</h3>
-        <p class="modal-copy">第一关免费，后续关卡需要购买完整版。当前游客模式不会保存游戏记录。</p>
+        <p class="modal-copy">游客模式不会保存游戏记录。完整账号请联系开发者开通。</p>
         <div class="account-actions">
-          <button id="btn-account-purchase" class="btn btn-primary" type="button">购买完整版</button>
-          <button id="btn-account-redeem" class="btn btn-ghost" type="button">兑换完整版</button>
-          <button id="btn-account-login" class="btn btn-ghost" type="button">登录账号</button>
+          <button id="btn-account-login" class="btn btn-primary" type="button">登录账号</button>
+          <button id="btn-account-support" class="btn btn-ghost" type="button">购买 / 赞助</button>
         </div>
       `;
-      card.querySelector("#btn-account-purchase").addEventListener("click", () => UI.openPurchase());
-      card.querySelector("#btn-account-redeem").addEventListener("click", () => UI.openRedeem());
       card.querySelector("#btn-account-login").addEventListener("click", () => UI.openLogin());
+      card.querySelector("#btn-account-support").addEventListener("click", () => UI.openContact("购买 / 赞助"));
       panel.appendChild(card);
-      this.renderSavedAccounts(panel);
+      this.renderSupportCard(panel);
       return;
     }
 
@@ -526,59 +526,30 @@ const UI = {
     const card = document.createElement("section");
     card.className = "account-card";
     card.innerHTML = `
-      <h3>当前账号</h3>
-      <div class="account-form">
-        <input id="accountNickname" class="text-input" maxlength="16" value="${Save.getAccountName()}">
-        <button id="btn-save-nickname" class="btn btn-primary" type="button">保存昵称</button>
+      <div class="account-heading">
+        <div>
+          <h3>${Save.isAdmin() ? "所有者账号" : "当前账号"}</h3>
+          <p class="modal-copy">${Save.getAccountName()}${Save.isAdmin() ? " · 永久最高权限" : ""}</p>
+        </div>
+        <strong>${Save.isPremium() ? "完整版" : "未购买"}</strong>
       </div>
-      <div class="account-actions" style="margin-top:14px">
-        <strong>完整版：${Save.isAdmin() && !Save.data.premium ? "管理员模式" : Save.isPremium() ? "已购买" : "未购买"}</strong>
-        ${!Save.isPremium() && !Save.isAdmin() ? '<button id="btn-account-purchase" class="btn btn-primary" type="button">购买完整版</button>' : ""}
-        ${!Save.isPremium() && !Save.isAdmin() ? '<button id="btn-account-redeem" class="btn btn-ghost" type="button">兑换完整版</button>' : ""}
-        ${Save.isAdmin() ? `<button id="btn-account-premium-toggle" class="btn btn-ghost" type="button">${Save.data.premium ? "撤销付费标记" : "标记为已付费"}</button>` : ""}
-      </div>
-      <div class="account-actions" style="margin-top:14px">
-        <button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>
-        <button id="btn-account-switch" class="btn btn-ghost" type="button">登录另一个账号</button>
-        ${Save.isAdmin() ? '<button id="btn-account-register-another" class="btn btn-ghost" type="button">注册另一个账号（管理员）</button>' : '<button id="btn-account-contact" class="btn btn-ghost" type="button">联系开发者获取账号</button>'}
-      </div>
-      <div class="account-actions" style="margin-top:14px">
+      <div class="account-actions">
         <button id="btn-open-password" class="btn btn-primary" type="button">修改密码</button>
         <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
-        ${Save.isAdmin() ? '<button id="btn-account-generate-codes" class="btn btn-ghost" type="button">生成兑换码</button>' : ""}
+        ${Save.isAdmin() ? '<button id="btn-owner-manage" class="btn btn-primary" type="button">管理所有账号</button>' : ""}
+      </div>
+      <div class="account-actions">
+        ${Save.isAdmin() ? '<span class="owner-note">所有者账号不提供管理员退出入口，也不可被注销。</span>' : '<button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>'}
+        ${!Save.isAdmin() ? '<button id="btn-account-support" class="btn btn-ghost" type="button">购买 / 赞助</button>' : '<button id="btn-account-support" class="btn btn-ghost" type="button">购买 / 赞助</button>'}
       </div>
     `;
-    card.querySelector("#btn-save-nickname").addEventListener("click", () => {
-      App.renameAccount(card.querySelector("#accountNickname").value);
-    });
-    const purchase = card.querySelector("#btn-account-purchase");
-    if (purchase) {
-      purchase.addEventListener("click", () => UI.openPurchase());
-    }
-    const redeem = card.querySelector("#btn-account-redeem");
-    if (redeem) {
-      redeem.addEventListener("click", () => UI.openRedeem());
-    }
-    const premiumToggle = card.querySelector("#btn-account-premium-toggle");
-    if (premiumToggle) {
-      premiumToggle.addEventListener("click", () => App.togglePremium());
-    }
-    card.querySelector("#btn-account-logout").addEventListener("click", () => App.logoutAccount());
-    card.querySelector("#btn-account-switch").addEventListener("click", () => UI.openLogin());
-    const registerAnother = card.querySelector("#btn-account-register-another");
-    if (registerAnother) {
-      registerAnother.addEventListener("click", () => UI.openRegister());
-    }
-    const contact = card.querySelector("#btn-account-contact");
-    if (contact) {
-      contact.addEventListener("click", () => UI.openContact());
-    }
-    const generateCodes = card.querySelector("#btn-account-generate-codes");
-    if (generateCodes) {
-      generateCodes.addEventListener("click", () => App.openRedeemBatch());
-    }
+    const logout = card.querySelector("#btn-account-logout");
+    if (logout) logout.addEventListener("click", () => App.logoutAccount());
     card.querySelector("#btn-open-password").addEventListener("click", () => UI.openPasswordModal());
     card.querySelector("#btn-view-password").addEventListener("click", () => App.viewPassword());
+    card.querySelector("#btn-account-support").addEventListener("click", () => UI.openContact("购买 / 赞助"));
+    const ownerManage = card.querySelector("#btn-owner-manage");
+    if (ownerManage) ownerManage.addEventListener("click", () => App.openOwnerAccounts());
     panel.appendChild(card);
     this.renderSavedAccounts(panel);
   },
@@ -586,11 +557,21 @@ const UI = {
   renderSavedAccounts(panel) {
     const accounts = Save.getServerAccounts();
     if (!accounts.length) return;
+    const unique = [];
+    const seen = new Set();
+    accounts.slice().reverse().forEach((account) => {
+      const key = String(account.nickname).toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(account);
+      }
+    });
+    if (!unique.length) return;
     const card = document.createElement("section");
     card.className = "account-card";
-    card.innerHTML = `<h3>本机已登录账号</h3><div class="account-list" id="savedAccountList"></div>`;
+    card.innerHTML = `<h3>最近登录</h3><div class="account-list" id="savedAccountList"></div>`;
     const list = card.querySelector("#savedAccountList");
-    accounts.forEach((account) => {
+    unique.forEach((account) => {
       const row = document.createElement("div");
       row.className = `account-row${account.token === Save.getActiveAccountId() ? " is-active" : ""}`;
       const info = document.createElement("div");
@@ -611,6 +592,76 @@ const UI = {
       list.appendChild(row);
     });
     panel.appendChild(card);
+  },
+
+  renderSupportCard(panel) {
+    const card = document.createElement("section");
+    card.className = "account-card";
+    card.innerHTML = `
+      <h3>购买 / 赞助</h3>
+      <div class="support-list">
+        <a class="support-link" href="https://ifdian.net/a/aystwljcr" target="_blank" rel="noopener">爱发电赞助</a>
+        <a class="support-link" href="https://space.bilibili.com/589748677?spm_id_from=333.1007.0.0" target="_blank" rel="noopener">B 站充电</a>
+      </div>
+    `;
+    panel.appendChild(card);
+  },
+
+  openOwnerAccounts() {
+    if (!Save.isAdmin()) return;
+    this.refs.ownerWelcomeText.hidden = true;
+    this.refs.ownerAccountsModal.hidden = false;
+    requestAnimationFrame(() => this.refs.ownerAccountsModal.classList.add("is-open"));
+    App.loadOwnerAccounts();
+  },
+
+  hideOwnerAccounts() {
+    this.refs.ownerAccountsModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.ownerAccountsModal.hidden = true;
+    }, 200);
+  },
+
+  renderOwnerAccounts(accounts = []) {
+    const list = this.refs.ownerAccountsList;
+    list.innerHTML = "";
+    if (!accounts.length) {
+      list.innerHTML = `<p class="modal-copy">暂无账号。</p>`;
+      return;
+    }
+    accounts.forEach((account) => {
+      const row = document.createElement("div");
+      row.className = "owner-account-row";
+      row.innerHTML = `
+        <div class="owner-account-info">
+          <strong>${account.nickname}</strong>
+          <span>${account.is_owner ? "所有者" : account.premium ? "完整版" : "普通账号"}</span>
+        </div>
+        <code class="owner-password">${account.password ? account.password : "旧账号无明文"}</code>
+        ${account.is_owner ? "" : '<button class="btn btn-danger" type="button">注销</button>'}
+      `;
+      const remove = row.querySelector("button");
+      if (remove) {
+        remove.addEventListener("click", () => App.deleteOwnerAccount(account.nickname));
+      }
+      list.appendChild(row);
+    });
+  },
+
+  setOwnerWelcome(account) {
+    const textarea = this.refs.ownerWelcomeText;
+    textarea.value = [
+      "你好，这是你的《物律远征》游戏账号：",
+      "",
+      `账号：${account.nickname}`,
+      `密码：${account.password}`,
+      "",
+      "请打开 https://wulvyuanzheng.dpdns.org/ 登录。登录后建议立即修改为个人密码，不要继续使用默认密码。",
+      "账号用于保存游戏进度，请勿随意转借或公开。",
+      "进入游戏后可在开始界面看到章节地图。通关时收集能量碎片与隐藏法则残片会获得额外奖励。",
+      "如需帮助，请通过邮箱 3481816300@qq.com 联系开发者。"
+    ].join("\n");
+    textarea.hidden = false;
   },
 
   updateAccountButton() {
@@ -659,6 +710,7 @@ const UI = {
   },
 
   openFirstRun() {
+    if (!this.refs.firstRunModal) return;
     const container = this.refs.firstRunOptions;
     container.innerHTML = "";
     this.refs.firstRunError.hidden = true;
@@ -694,8 +746,7 @@ const UI = {
   },
 
   openPurchase() {
-    this.refs.purchaseModal.hidden = false;
-    requestAnimationFrame(() => this.refs.purchaseModal.classList.add("is-open"));
+    this.openContact("购买 / 赞助");
   },
 
   hidePurchase() {
@@ -744,20 +795,22 @@ const UI = {
 
   openContact(title = "联系开发者获取账号") {
     const channels = [
-      "📩 咨询邮箱：3481816300@qq.com",
-      "💬 咨询微信：15156525860",
-      "💬 咨询QQ：3481816300",
+      "📩 邮箱：3481816300@qq.com",
+      "💬 微信：15156525860",
+      "💬 QQ：3481816300",
       "暂不支持电话咨询，敬请谅解"
     ];
     document.getElementById("contactTitle").textContent = title;
-    const intro = title === "购买完整版"
-      ? "<p>第一关免费。解锁后续全部关卡需要购买完整版。</p><p>购买后请联系开发者，管理员会为你标记为已付费用户。</p>"
-      : "<p>本游戏为商业付费游戏。如需获取完整版本、了解售价、购买流程或授权范围，请通过官方渠道咨询。</p>";
+    const intro = title.includes("购买")
+      ? "<p>完整版账号通过赞助或联系开发者开通。</p>"
+      : "<p>如需获取完整版本、了解售价、购买流程或授权范围，请通过官方渠道咨询。</p>";
     this.refs.contactContent.innerHTML = `
       ${intro}
+      <a class="support-link" href="https://ifdian.net/a/aystwljcr" target="_blank" rel="noopener">爱发电赞助</a>
+      <a class="support-link" href="https://space.bilibili.com/589748677?spm_id_from=333.1007.0.0" target="_blank" rel="noopener">B 站充电</a>
       ${channels.map((channel) => `<div class="contact-channel">${channel}</div>`).join("")}
       <p>请简要说明你的需求，例如：个人使用 / 团队使用、设备平台等，方便我快速为你解答。</p>
-      <p>所有付费相关仅通过官方渠道沟通，不存在其他代理；请确认沟通对象为本人后再进行后续操作，谨防诈骗。</p>
+      <p>请确认沟通对象为本人后再进行后续操作，谨防诈骗。</p>
     `;
     this.refs.contactModal.hidden = false;
     requestAnimationFrame(() => this.refs.contactModal.classList.add("is-open"));
@@ -1138,10 +1191,11 @@ const UI = {
 
   setAdminBadges(visible) {
     this.refs.adminBadge.hidden = !visible;
+    this.refs.adminBadge.textContent = "所有者";
     this.refs.adminBadgeLevels.hidden = !visible;
-    this.refs.btnExitAdmin.hidden = !visible;
-    this.refs.btnExitAdminLevels.hidden = !visible;
-    this.refs.btnAdmin.textContent = visible ? "退出管理员模式" : "管理员模式";
+    this.refs.btnExitAdmin.hidden = true;
+    this.refs.btnExitAdminLevels.hidden = true;
+    this.refs.btnAdmin.hidden = true;
   },
 
   showToast(message) {
@@ -1224,11 +1278,10 @@ const UI = {
     this.pausePreview = canvas;
     this.refs.pauseSkinBox.appendChild(canvas);
 
-    const difficulty = DIFFICULTY_MODES.find((mode) => mode.id === Save.data.difficulty) || { label: "未选择" };
     const completedChapters = Save.getCompletedChapterCount();
     const completedLevels = Object.keys(Save.data.completedLevels).length;
     this.refs.pauseUserInfo.innerHTML = `
-      <div><span>难度</span><strong>${difficulty.label}</strong></div>
+      <div><span>账号</span><strong>${Save.getAccountName()}</strong></div>
       <div><span>角色</span><strong>${character.name}</strong></div>
       <div><span>章节</span><strong>${completedChapters}/${Save.getVisibleChapterCount()}</strong></div>
       <div><span>通关</span><strong>${completedLevels} 关</strong></div>

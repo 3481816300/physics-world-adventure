@@ -80,13 +80,27 @@ const App = {
       Api.loadSave(Save.serverToken)
         .then((data) => {
           Save.data = Object.assign(Save.data, data.saveData || {});
+          if (Save.isAdmin()) {
+            Save.data.premium = true;
+            Save.data.premiumUntil = Save.data.premiumUntil || "2099-01-01T00:00:00.000Z";
+          }
+          if (Save.serverToken && Save.serverAccounts) {
+            Save.serverAccounts[Save.serverToken] = {
+              nickname: Save.getAccountName(),
+              token: Save.serverToken,
+              password: Save.serverPassword,
+              saveData: Save.data,
+              addedAt: Date.now()
+            };
+            Save.persistServerAccounts();
+          }
+          Save.save();
           UI.renderDifficultySelector();
           UI.updateResumeSaveButton();
           UI.updateAccountButton();
         })
         .catch(() => {
-          Save.clearServerSession();
-          UI.openOnboarding();
+          UI.showToast("云端暂未连接，已使用本地缓存");
         });
     }
 
@@ -128,7 +142,7 @@ const App = {
     document.getElementById("btn-account").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-account-back").addEventListener("click", () => this.showTitle());
     document.getElementById("btn-onboard-login").addEventListener("click", () => UI.openLogin());
-    document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openPurchase());
+    document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openContact("购买 / 赞助"));
     document.getElementById("btn-onboard-guest").addEventListener("click", () => this.enterGuest());
     document.getElementById("btn-random-name").addEventListener("click", () => this.refreshRandomName());
     document.getElementById("btn-register-submit").addEventListener("click", () => this.registerAccount());
@@ -147,19 +161,10 @@ const App = {
       UI.hidePurchase();
       UI.openContact();
     });
-    document.getElementById("btn-open-redeem").addEventListener("click", () => UI.openRedeem());
-    document.getElementById("btn-redeem-submit").addEventListener("click", () => this.redeemCode());
-    document.getElementById("btn-redeem-cancel").addEventListener("click", () => UI.hideRedeem());
-    document.getElementById("redeemCode").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        this.redeemCode();
-      }
-    });
-    document.getElementById("btn-redeem-batch-submit").addEventListener("click", () => this.generateRedeemCodes());
-    document.getElementById("btn-redeem-batch-close").addEventListener("click", () => UI.hideRedeemBatch());
     document.getElementById("btn-support-close").addEventListener("click", () => UI.hideDevSupport());
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
-    document.getElementById("btn-background-skip").addEventListener("click", () => this.finishBackground());
+    document.getElementById("btn-owner-create").addEventListener("click", () => this.ownerCreateAccount());
+    document.getElementById("btn-owner-close").addEventListener("click", () => UI.hideOwnerAccounts());
     document.getElementById("btn-intro-continue").addEventListener("click", () => this.continueChapterIntro());
     document.getElementById("btn-intro-skip").addEventListener("click", () => this.skipChapterIntro());
     document.getElementById("btn-poem-continue").addEventListener("click", () => this.finishEndPoem());
@@ -416,6 +421,48 @@ const App = {
     this.showTitle();
   },
 
+  openOwnerAccounts() {
+    if (!Save.isAdmin()) return;
+    UI.openOwnerAccounts();
+  },
+
+  async loadOwnerAccounts() {
+    if (!Save.isAdmin()) return;
+    try {
+      const data = await Api.ownerListAccounts(Save.serverToken);
+      UI.renderOwnerAccounts(Array.isArray(data.accounts) ? data.accounts : []);
+    } catch (error) {
+      UI.showToast(error.message || "读取账号失败");
+    }
+  },
+
+  async ownerCreateAccount() {
+    if (!Save.isAdmin()) return;
+    const button = document.getElementById("btn-owner-create");
+    button.disabled = true;
+    try {
+      const account = await Api.ownerCreateAccount(Save.serverToken);
+      UI.setOwnerWelcome(account);
+      await this.loadOwnerAccounts();
+    } catch (error) {
+      UI.showToast(error.message || "注册账号失败");
+    } finally {
+      button.disabled = false;
+    }
+  },
+
+  async deleteOwnerAccount(nickname) {
+    if (!Save.isAdmin()) return;
+    if (!window.confirm(`确认注销账号 ${nickname}？`)) return;
+    try {
+      await Api.ownerDeleteAccount(Save.serverToken, nickname);
+      UI.showToast(`已注销 ${nickname}`);
+      await this.loadOwnerAccounts();
+    } catch (error) {
+      UI.showToast(error.message || "注销失败");
+    }
+  },
+
   async changePassword() {
     if (Save.isGuest()) return;
     const oldPassword = UI.refs.passwordOld.value;
@@ -567,10 +614,6 @@ const App = {
     }
     if (!Save.data.backgroundSeen) {
       UI.openBackground();
-      return;
-    }
-    if (!Save.isDifficultyLocked()) {
-      UI.openFirstRun();
     }
   },
 
@@ -600,11 +643,7 @@ const App = {
   },
 
   confirmFirstRun(difficultyId) {
-    Save.setDifficulty(difficultyId, true);
-    UI.hideFirstRun();
-    UI.renderDifficultySelector();
-    const mode = DIFFICULTY_MODES.find((item) => item.id === difficultyId);
-    UI.showToast(`已选择${mode ? mode.label : difficultyId}，难度已锁定`);
+    UI.showToast("游戏已统一难度");
   },
 
   startLevel(chapterId, levelId, isFinal = false) {
