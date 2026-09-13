@@ -155,7 +155,12 @@ const App = {
     document.getElementById("btn-contact-close").addEventListener("click", () => UI.hideContact());
     document.getElementById("btn-support-close").addEventListener("click", () => UI.hideDevSupport());
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
-    document.getElementById("btn-owner-create").addEventListener("click", () => this.ownerCreateAccount());
+document.addEventListener("click", (event) => {
+      const ownerCreate = event.target.closest && event.target.closest("#btn-owner-create");
+      if (!ownerCreate) return;
+      event.preventDefault();
+      this.ownerCreateAccount();
+    });
     document.getElementById("btn-owner-copy").addEventListener("click", () => this.copyOwnerWelcome());
     document.getElementById("btn-owner-back").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-owner-data-back").addEventListener("click", () => this.openOwnerAccounts());
@@ -421,21 +426,28 @@ const App = {
 
   async ownerCreateAccount() {
     if (!Save.isAdmin()) return;
-    const plan = UI.getSelectedOwnerPlan();
     const button = document.getElementById("btn-owner-create");
+    if (!button || button.disabled) return;
+    const original = button.textContent;
     button.disabled = true;
+    button.textContent = "创建中...";
     try {
+      const plan = UI.getSelectedOwnerPlan
+        ? UI.getSelectedOwnerPlan()
+        : { name: "法则同行者", price: "¥12.34/月", benefits: ["完整版永久账号"] };
       const account = await Api.ownerCreateAccount(Save.serverToken, plan.name);
       UI.setOwnerWelcome(account, plan);
       await this.loadOwnerAccounts();
-      UI.refs.ownerWelcomePanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const welcomeTarget = UI.refs.ownerWelcomePanel || UI.refs.ownerWelcomeText;
+      if (welcomeTarget) welcomeTarget.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      UI.showToast(`账号 ${account.nickname} 已创建`);
     } catch (error) {
       UI.showToast(error.message || "创建账号失败");
     } finally {
       button.disabled = false;
+      button.textContent = original;
     }
   },
-
   async copyOwnerWelcome() {
     const value = UI.refs.ownerWelcomeText.value;
     if (!value) return;

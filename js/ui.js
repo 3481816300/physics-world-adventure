@@ -770,7 +770,8 @@ const UI = {
       "账号用于保存游戏进度，请勿随意转借或公开。",
       "如需帮助，请通过邮箱 3481816300@qq.com 联系开发者。"
     ].join("\n");
-    this.refs.ownerWelcomePanel.hidden = false;
+    if (this.refs.ownerWelcomePanel) this.refs.ownerWelcomePanel.hidden = false;
+    else textarea.hidden = false;
   },
   updateAccountButton() {
     const button = document.getElementById("btn-account");
