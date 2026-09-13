@@ -7,12 +7,9 @@ const root = __dirname;
 const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(root, "data");
 const accountsFile = path.join(dataDir, "accounts.json");
 const namesFile = path.join(dataDir, "name_pool.json");
-const redeemCodesFile = path.join(dataDir, "redeem_codes.json");
 const port = Number(process.env.PORT || 8000);
 const host = process.env.HOST || "0.0.0.0";
 const sessionTtlMs = 3650 * 24 * 60 * 60 * 1000;
-const pendingNameTtlMs = 30 * 60 * 1000;
-const ADMIN_PASSWORD = "HarryLI@20120622";
 const OWNER_NICKNAME = "爱因斯坦未来继承人";
 const DEFAULT_ACCOUNT_PASSWORD = "Aa123456";
 
@@ -37,9 +34,6 @@ function ensureDataFiles() {
   }
   if (!fs.existsSync(namesFile)) {
     fs.writeFileSync(namesFile, "[]", "utf8");
-  }
-  if (!fs.existsSync(redeemCodesFile)) {
-    fs.writeFileSync(redeemCodesFile, "{}", "utf8");
   }
 }
 
@@ -71,35 +65,6 @@ function getAllNames() {
 
 function nameKey(name) {
   return String(name || "").normalize("NFKC").trim().toLowerCase();
-}
-
-function normalizeAdminInput(value) {
-  return String(value || "")
-    .normalize("NFKC")
-    .replace(/\s+/g, "")
-    .toLowerCase();
-}
-
-function normalizeCode(code) {
-  return String(code || "")
-    .normalize("NFKC")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
-}
-
-function makeRedeemCode() {
-  const part = () => crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `WL-${part()}-${part()}-${part()}`;
-}
-
-function getRedeemCodes() {
-  const data = readJson(redeemCodesFile);
-  return data && typeof data === "object" ? data : {};
-}
-
-function saveRedeemCodes(codes) {
-  writeJson(redeemCodesFile, codes);
 }
 
 function hashPassword(password, salt) {
@@ -158,23 +123,6 @@ function getSession(token) {
   return session;
 }
 
-function getAvailableNames() {
-  const now = Date.now();
-  const accounts = getAccounts();
-  const used = new Set();
-  for (const name of Object.keys(accounts)) {
-    used.add(nameKey(name));
-  }
-  for (const [name, time] of pendingNames) {
-    if (now - time < pendingNameTtlMs) {
-      used.add(nameKey(name));
-    } else {
-      pendingNames.delete(name);
-    }
-  }
-  return getAllNames().filter((name) => !used.has(nameKey(name)));
-}
-
 function normalizeSaveData(raw) {
   return raw && typeof raw === "object" ? raw : {};
 }
@@ -187,45 +135,6 @@ const server = http.createServer(async (request, response) => {
 
   if (urlPath.startsWith("/api/")) {
     try {
-      if (request.method === "POST" && urlPath === "/api/register") {
-        const body = await readBody(request);
-        const nickname = String(body.nickname || "").trim();
-        const password = String(body.password || "");
-        if (normalizeAdminInput(body.adminPassword) !== normalizeAdminInput(ADMIN_PASSWORD)) {
-          return sendJson(response, 403, { error: "仅管理员模式可注册账号" });
-        }
-        if (!nickname || nickname.length > 16 || password.length < 4) {
-          return sendJson(response, 400, { error: "昵称不能为空或超过16字，密码至少 4 位" });
-        }
-        const accounts = getAccounts();
-        const key = nameKey(nickname);
-        if (accounts[key]) {
-          return sendJson(response, 409, { error: "该账号已存在，请重新输入" });
-        }
-        const wasPending = pendingNames.has(key);
-        if (wasPending) {
-          const reservedAt = pendingNames.get(key);
-          if (Date.now() - reservedAt < pendingNameTtlMs) {
-            return sendJson(response, 409, { error: "该账号已存在，请重新输入" });
-          }
-          pendingNames.delete(key);
-        }
-        const salt = crypto.randomBytes(12).toString("hex");
-        accounts[key] = {
-          nickname,
-          salt,
-          passwordHash: hashPassword(password, salt),
-          visiblePassword: password,
-          createdAt: Date.now(),
-          defaultName: wasPending ? nickname : null,
-          assignedAt: wasPending ? Date.now() : null,
-          saveData: {}
-        };
-        saveAccounts(accounts);
-        const token = createSession(nickname);
-        return sendJson(response, 200, { token, nickname, saveData: {} });
-      }
-
       if (request.method === "POST" && urlPath === "/api/login") {
         const body = await readBody(request);
         const nickname = String(body.nickname || "").trim();
@@ -253,16 +162,35 @@ const server = http.createServer(async (request, response) => {
           nickname: account.nickname,
           password: account.visiblePassword || null,
           premium: Boolean(account.saveData && account.saveData.premium),
+          owner_note: account.ownerNote || "",
+          save_data: account.saveData || {},
+          created_at: new Date(account.createdAt || Date.now()).toISOString(),
+          updated_at: new Date(account.updatedAt || account.createdAt || Date.now()).toISOString(),
           is_owner: account.nickname === OWNER_NICKNAME
         }));
         return sendJson(response, 200, { accounts });
+      }
+
+      if (request.method === "POST" && urlPath === "/api/owner/note") {
+        const body = await readBody(request);
+        const session = getSession(body.token);
+        if (!session) return sendJson(response, 401, { error: "登录已失效" });
+        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可修改备注" });
+        const accounts = getAccounts();
+        const account = accounts[nameKey(String(body.nickname || ""))];
+        if (!account) return sendJson(response, 404, { error: "账号不存在" });
+        account.ownerNote = String(body.note || "").slice(0, 500);
+        saveAccounts(accounts);
+        return sendJson(response, 200, { ok: true });
       }
 
       if (request.method === "POST" && urlPath === "/api/owner/create") {
         const body = await readBody(request);
         const session = getSession(body.token);
         if (!session) return sendJson(response, 401, { error: "登录已失效" });
-        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可注册账号" });
+        if (session.nickname !== OWNER_NICKNAME) return sendJson(response, 403, { error: "仅所有者可创建账号" });
+        const planName = String(body.plan || "法则同行者").trim() || "法则同行者";
+        const premium = planName !== "星尘观测者";
         const accounts = getAccounts();
         let nickname = "";
         const used = new Set(Object.values(accounts).map((account) => nameKey(account.nickname)));
@@ -282,15 +210,23 @@ const server = http.createServer(async (request, response) => {
           salt,
           passwordHash: hashPassword(DEFAULT_ACCOUNT_PASSWORD, salt),
           visiblePassword: DEFAULT_ACCOUNT_PASSWORD,
+          ownerNote: `爱发电档位：${planName}`,
+          saveData: premium
+            ? { premium: true, premiumUntil: "2099-01-01T00:00:00.000Z" }
+            : {},
           createdAt: Date.now(),
+          updatedAt: Date.now(),
           defaultName: null,
-          assignedAt: null,
-          saveData: {}
+          assignedAt: null
         };
         saveAccounts(accounts);
-        return sendJson(response, 200, { nickname, password: DEFAULT_ACCOUNT_PASSWORD });
+        return sendJson(response, 200, {
+          nickname,
+          password: DEFAULT_ACCOUNT_PASSWORD,
+          plan: planName,
+          premium
+        });
       }
-
       if (request.method === "POST" && urlPath === "/api/owner/delete") {
         const body = await readBody(request);
         const session = getSession(body.token);
@@ -357,16 +293,6 @@ const server = http.createServer(async (request, response) => {
         return sendJson(response, 200, { ok: true });
       }
 
-      if (request.method === "GET" && urlPath === "/api/random-name") {
-        const available = getAvailableNames();
-        if (!available.length) {
-          return sendJson(response, 503, { error: "昵称池已用尽，请联系管理员扩充" });
-        }
-        const chosen = available[Math.floor(Math.random() * available.length)];
-        pendingNames.set(nameKey(chosen), Date.now());
-        return sendJson(response, 200, { nickname: chosen });
-      }
-
       if (request.method === "GET" && urlPath === "/api/save") {
         const session = getSession(url.searchParams.get("token"));
         if (!session) return sendJson(response, 401, { error: "登录已失效" });
@@ -383,61 +309,11 @@ const server = http.createServer(async (request, response) => {
         const account = accounts[nameKey(session.nickname)];
         if (!account) return sendJson(response, 404, { error: "账号不存在" });
         account.saveData = normalizeSaveData(body.saveData);
+        account.updatedAt = Date.now();
         saveAccounts(accounts);
         return sendJson(response, 200, { ok: true });
       }
 
-      if (request.method === "POST" && urlPath === "/api/redeem-codes") {
-        const body = await readBody(request);
-        if (normalizeAdminInput(body.adminPassword) !== normalizeAdminInput(ADMIN_PASSWORD)) {
-          return sendJson(response, 403, { error: "仅管理员模式可生成兑换码" });
-        }
-        const quantity = Math.min(50, Math.max(1, Number(body.quantity) || 1));
-        const codes = getRedeemCodes();
-        const created = [];
-        while (created.length < quantity) {
-          const code = makeRedeemCode();
-          if (codes[code]) continue;
-          codes[code] = {
-            code,
-            status: "unused",
-            createdAt: new Date().toISOString()
-          };
-          created.push(code);
-        }
-        saveRedeemCodes(codes);
-        return sendJson(response, 200, { ok: true, codes: created });
-      }
-
-      if (request.method === "POST" && urlPath === "/api/redeem") {
-        const body = await readBody(request);
-        const session = getSession(body.token);
-        if (!session) return sendJson(response, 401, { error: "登录已失效" });
-        const accounts = getAccounts();
-        const account = accounts[nameKey(session.nickname)];
-        if (!account) return sendJson(response, 404, { error: "账号不存在" });
-
-        const code = normalizeCode(body.code);
-        const codes = getRedeemCodes();
-        const record = codes[code];
-        const expired = record && record.expiresAt && new Date(record.expiresAt).getTime() < Date.now();
-        if (!record || record.status !== "unused" || expired) {
-          return sendJson(response, 400, { error: "兑换码无效或已被使用" });
-        }
-
-        const premiumUntil = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-        record.status = "used";
-        record.consumedBy = account.nickname;
-        record.consumedAt = new Date().toISOString();
-        codes[code] = record;
-        account.saveData = Object.assign({}, account.saveData || {}, {
-          premium: true,
-          premiumUntil
-        });
-        saveAccounts(accounts);
-        saveRedeemCodes(codes);
-        return sendJson(response, 200, { ok: true, premium: true, premiumUntil });
-      }
     } catch (error) {
       return sendJson(response, 400, { error: error.message || "请求失败" });
     }

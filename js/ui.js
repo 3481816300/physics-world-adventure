@@ -16,6 +16,66 @@ const MAP_NODE_POSITIONS = [
 ];
 
 const MAP_NODE_ICONS = ["力", "波", "热", "光", "流", "能", "机", "电", "撞", "星", "核", "量", "时", "熵"];
+const OWNER_PLANS = [
+  {
+    name: "星尘观测者",
+    price: "¥6.66/月",
+    benefits: [
+      "每月开发进度日志",
+      "支持者专属徽章",
+      "游戏感谢名单",
+      "第一章永久试玩资格",
+      "本档不包含完整版永久账号"
+    ]
+  },
+  {
+    name: "法则同行者",
+    price: "¥12.34/月",
+    benefits: [
+      "包含星尘观测者全部权益",
+      "完整版永久账号，停止赞助后仍可继续游玩",
+      "后续新增章节与正式更新",
+      "新章节优先体验资格",
+      "官方 QQ 群交流资格",
+      "每月开发进度与版本预告"
+    ]
+  },
+  {
+    name: "裂隙勘探员",
+    price: "¥23.33/月",
+    benefits: [
+      "包含法则同行者全部权益",
+      "新章节内测版本优先发放",
+      "每月开发方向投票",
+      "开发者问题优先回复",
+      "内测专属纪念徽章"
+    ]
+  },
+  {
+    name: "远征赞助人",
+    price: "¥54.32/月",
+    benefits: [
+      "包含裂隙勘探员全部权益",
+      "游戏内纪念页署名",
+      "每月赞助者感谢名单",
+      "额外赠送一个完整版账号",
+      "数字纪念品、开发手记或电子明信片",
+      "新角色、纪念品或关卡主题建议权"
+    ]
+  },
+  {
+    name: "终章共创者",
+    price: "¥98.76/月",
+    benefits: [
+      "包含远征赞助人全部权益",
+      "终章特别感谢名单",
+      "独立内测优先资格",
+      "角色、关卡或纪念品创意共创权",
+      "阶段性开发会议或问卷参与资格",
+      "未来正式平台版本优先激活码"
+    ]
+  }
+];
 
 const UI = {
   refs: {},
@@ -78,21 +138,8 @@ const UI = {
       onboardingModal: document.getElementById("onboardingModal"),
       contactModal: document.getElementById("contactModal"),
       contactContent: document.getElementById("contactContent"),
-      purchaseModal: document.getElementById("purchaseModal"),
-      redeemModal: document.getElementById("redeemModal"),
-      redeemCode: document.getElementById("redeemCode"),
-      redeemError: document.getElementById("redeemError"),
-      redeemBatchModal: document.getElementById("redeemBatchModal"),
-      redeemBatchCount: document.getElementById("redeemBatchCount"),
-      redeemBatchResult: document.getElementById("redeemBatchResult"),
-      redeemBatchError: document.getElementById("redeemBatchError"),
       devSupportModal: document.getElementById("devSupportModal"),
       devSupportChapter: document.getElementById("devSupportChapter"),
-      registerModal: document.getElementById("registerModal"),
-      registerNickname: document.getElementById("registerNickname"),
-      registerPassword: document.getElementById("registerPassword"),
-      registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
-      registerError: document.getElementById("registerError"),
       loginModal: document.getElementById("loginModal"),
       loginNickname: document.getElementById("loginNickname"),
       loginPassword: document.getElementById("loginPassword"),
@@ -102,8 +149,9 @@ const UI = {
       passwordNew: document.getElementById("passwordNew"),
       passwordConfirm: document.getElementById("passwordConfirm"),
       passwordModalError: document.getElementById("passwordModalError"),
-      ownerAccountsModal: document.getElementById("ownerAccountsModal"),
       ownerAccountsList: document.getElementById("ownerAccountsList"),
+      ownerPlanSelect: document.getElementById("ownerPlanSelect"),
+      ownerWelcomePanel: document.getElementById("ownerWelcomePanel"),
       ownerWelcomeText: document.getElementById("ownerWelcomeText"),
       knowledgeModal: document.getElementById("knowledgeModal"),
       knowledgeQuestion: document.getElementById("knowledgeQuestion"),
@@ -125,6 +173,7 @@ const UI = {
     this.newtonAnimator.load();
     this.knowledgeNewtonAnimator = new NewtonAnimator(this.refs.knowledgeNewtonCanvas);
     this.knowledgeNewtonAnimator.load();
+    this.renderOwnerPlans();
   },
 
   show(screenName) {
@@ -245,7 +294,7 @@ const UI = {
       }
       if (!unlocked) {
         if (!Save.isPremium() && chapter.id !== 1) {
-          UI.openPurchase();
+          UI.openContact("获取完整版账号");
         } else {
           UI.showToast("请先完成上一章的章节 Boss");
         }
@@ -302,7 +351,7 @@ const UI = {
       card.addEventListener("click", () => {
         if (!unlocked) {
           if (!Save.isPremium()) {
-            UI.openPurchase();
+            UI.openContact("获取完整版账号");
           } else {
             UI.showToast("请先完成前一关");
           }
@@ -536,7 +585,7 @@ const UI = {
       <div class="account-actions">
         <button id="btn-open-password" class="btn btn-primary" type="button">修改密码</button>
         <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
-        ${Save.isAdmin() ? '<button id="btn-owner-manage" class="btn btn-primary" type="button">管理所有账号</button>' : ""}
+        ${Save.isAdmin() ? '<button id="btn-owner-manage" class="btn btn-primary" type="button">管理所有账号</button><button id="btn-owner-analytics" class="btn btn-ghost" type="button">数据中心</button>' : ""}
       </div>
       <div class="account-actions">
         ${Save.isAdmin() ? '<span class="owner-note">所有者账号不提供管理员退出入口，也不可被注销。</span>' : '<button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>'}
@@ -550,6 +599,8 @@ const UI = {
     card.querySelector("#btn-account-support").addEventListener("click", () => UI.openContact("购买 / 赞助"));
     const ownerManage = card.querySelector("#btn-owner-manage");
     if (ownerManage) ownerManage.addEventListener("click", () => App.openOwnerAccounts());
+    const ownerAnalytics = card.querySelector("#btn-owner-analytics");
+    if (ownerAnalytics) ownerAnalytics.addEventListener("click", () => App.openOwnerAnalytics());
     panel.appendChild(card);
     this.renderSavedAccounts(panel);
   },
@@ -607,63 +658,120 @@ const UI = {
     panel.appendChild(card);
   },
 
-  openOwnerAccounts() {
-    if (!Save.isAdmin()) return;
-    this.refs.ownerWelcomeText.hidden = true;
-    this.refs.ownerAccountsModal.hidden = false;
-    requestAnimationFrame(() => this.refs.ownerAccountsModal.classList.add("is-open"));
-    App.loadOwnerAccounts();
+  renderOwnerPlans() {
+    const select = this.refs.ownerPlanSelect;
+    if (!select) return;
+    select.innerHTML = "";
+    OWNER_PLANS.forEach((plan) => {
+      const option = document.createElement("option");
+      option.value = plan.name;
+      option.textContent = `${plan.price} · ${plan.name}`;
+      select.appendChild(option);
+    });
+    select.value = "法则同行者";
   },
 
-  hideOwnerAccounts() {
-    this.refs.ownerAccountsModal.classList.remove("is-open");
-    setTimeout(() => {
-      this.refs.ownerAccountsModal.hidden = true;
-    }, 200);
+  getSelectedOwnerPlan() {
+    const planName = this.refs.ownerPlanSelect ? this.refs.ownerPlanSelect.value : "法则同行者";
+    return OWNER_PLANS.find((plan) => plan.name === planName) || OWNER_PLANS[1];
   },
-
   renderOwnerAccounts(accounts = []) {
     const list = this.refs.ownerAccountsList;
     list.innerHTML = "";
     if (!accounts.length) {
-      list.innerHTML = `<p class="modal-copy">暂无账号。</p>`;
+      const row = list.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 5;
+      cell.className = "owner-table-empty";
+      cell.textContent = "暂无账号";
       return;
     }
+
     accounts.forEach((account) => {
-      const row = document.createElement("div");
-      row.className = "owner-account-row";
-      row.innerHTML = `
-        <div class="owner-account-info">
-          <strong>${account.nickname}</strong>
-          <span>${account.is_owner ? "所有者" : account.premium ? "完整版" : "普通账号"}</span>
-        </div>
-        <code class="owner-password">${account.password ? account.password : "旧账号无明文"}</code>
-        ${account.is_owner ? "" : '<button class="btn btn-danger" type="button">注销</button>'}
-      `;
-      const remove = row.querySelector("button");
-      if (remove) {
-        remove.addEventListener("click", () => App.deleteOwnerAccount(account.nickname));
+      const row = list.insertRow();
+      if (account.is_owner) row.classList.add("is-owner");
+
+      const nameCell = row.insertCell();
+      const identity = document.createElement("div");
+      identity.className = "owner-account-identity";
+      const name = document.createElement("strong");
+      name.textContent = account.nickname;
+      identity.appendChild(name);
+      if (account.is_owner) {
+        const tag = document.createElement("span");
+        tag.className = "owner-account-badge";
+        tag.textContent = "所有者";
+        identity.appendChild(tag);
       }
-      list.appendChild(row);
+      nameCell.appendChild(identity);
+
+      const statusCell = row.insertCell();
+      const status = document.createElement("span");
+      status.className = account.premium ? "owner-status is-premium" : "owner-status";
+      status.textContent = account.premium ? "完整版" : "普通账号";
+      statusCell.appendChild(status);
+
+      const passwordCell = row.insertCell();
+      const password = document.createElement("code");
+      password.className = "owner-password";
+      password.textContent = account.password || "旧账号无明文";
+      passwordCell.appendChild(password);
+
+      const noteCell = row.insertCell();
+      const note = document.createElement("input");
+      note.className = "owner-note-input";
+      note.type = "text";
+      note.maxLength = 500;
+      note.placeholder = "仅所有者可见";
+      note.value = account.owner_note || "";
+      noteCell.appendChild(note);
+
+      const actionsCell = row.insertCell();
+      const actions = document.createElement("div");
+      actions.className = "owner-row-actions";
+      const saveNote = document.createElement("button");
+      saveNote.type = "button";
+      saveNote.className = "btn btn-ghost";
+      saveNote.textContent = "保存备注";
+      saveNote.addEventListener("click", () => App.saveOwnerNote(account.nickname, note, saveNote));
+      actions.appendChild(saveNote);
+      if (!account.is_owner) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn btn-danger";
+        remove.textContent = "注销";
+        remove.addEventListener("click", () => App.deleteOwnerAccount(account.nickname));
+        actions.appendChild(remove);
+      }
+      actionsCell.appendChild(actions);
     });
   },
 
-  setOwnerWelcome(account) {
+  setOwnerWelcome(account, plan = OWNER_PLANS[1]) {
     const textarea = this.refs.ownerWelcomeText;
+    const rights = plan.benefits.map((benefit) => `- ${benefit}`).join("\n");
+    const accountNote = plan.name === "星尘观测者"
+      ? "本档不包含完整版永久账号；升级到法则同行者后，已发放账号不会因停止赞助被收回。"
+      : "完整版账号一经发放，停止赞助后仍可继续游玩。";
     textarea.value = [
-      "你好，这是你的《物律远征》游戏账号：",
+      "你好，这是你的《物律远征》爱发电赞助账号：",
       "",
+      `爱发电档位：${plan.price} · ${plan.name}`,
       `账号：${account.nickname}`,
       `密码：${account.password}`,
       "",
-      "请打开 https://wulvyuanzheng.dpdns.org/ 登录。登录后建议立即修改为个人密码，不要继续使用默认密码。",
+      "官方网站：https://wulvyuanzheng.dpdns.org/",
+      "请从官方网站登录，并尽快修改为个人密码，不要继续使用默认密码。",
+      "",
+      "本档权益：",
+      rights,
+      "",
+      accountNote,
       "账号用于保存游戏进度，请勿随意转借或公开。",
-      "进入游戏后可在开始界面看到章节地图。通关时收集能量碎片与隐藏法则残片会获得额外奖励。",
       "如需帮助，请通过邮箱 3481816300@qq.com 联系开发者。"
     ].join("\n");
-    textarea.hidden = false;
+    this.refs.ownerWelcomePanel.hidden = false;
   },
-
   updateAccountButton() {
     const button = document.getElementById("btn-account");
     if (button) {
@@ -745,54 +853,6 @@ const UI = {
     }, 200);
   },
 
-  openPurchase() {
-    this.openContact("购买 / 赞助");
-  },
-
-  hidePurchase() {
-    this.refs.purchaseModal.classList.remove("is-open");
-    setTimeout(() => {
-      this.refs.purchaseModal.hidden = true;
-    }, 200);
-  },
-
-  openRedeem() {
-    UI.hidePurchase();
-    if (Save.isGuest()) {
-      UI.openLogin();
-      UI.showToast("请先登录账号后兑换");
-      return;
-    }
-    this.refs.redeemCode.value = "";
-    this.refs.redeemError.hidden = true;
-    this.refs.redeemModal.hidden = false;
-    requestAnimationFrame(() => this.refs.redeemModal.classList.add("is-open"));
-    setTimeout(() => this.refs.redeemCode.focus(), 80);
-  },
-
-  hideRedeem() {
-    this.refs.redeemModal.classList.remove("is-open");
-    setTimeout(() => {
-      this.refs.redeemModal.hidden = true;
-    }, 200);
-  },
-
-  openRedeemBatch() {
-    if (!Save.isAdmin()) return;
-    this.refs.redeemBatchCount.value = "1";
-    this.refs.redeemBatchResult.value = "";
-    this.refs.redeemBatchError.hidden = true;
-    this.refs.redeemBatchModal.hidden = false;
-    requestAnimationFrame(() => this.refs.redeemBatchModal.classList.add("is-open"));
-  },
-
-  hideRedeemBatch() {
-    this.refs.redeemBatchModal.classList.remove("is-open");
-    setTimeout(() => {
-      this.refs.redeemBatchModal.hidden = true;
-    }, 200);
-  },
-
   openContact(title = "联系开发者获取账号") {
     const channels = [
       "📩 邮箱：3481816300@qq.com",
@@ -833,32 +893,6 @@ const UI = {
     this.refs.devSupportModal.classList.remove("is-open");
     setTimeout(() => {
       this.refs.devSupportModal.hidden = true;
-    }, 200);
-  },
-
-  openRegister() {
-    if (!Save.isAdmin()) {
-      UI.openContact();
-      return;
-    }
-    this.refs.registerModal.hidden = false;
-    this.refs.registerError.hidden = true;
-    this.refs.registerPassword.value = "";
-    this.refs.registerPasswordConfirm.value = "";
-    requestAnimationFrame(() => this.refs.registerModal.classList.add("is-open"));
-    Api.getRandomName()
-      .then((data) => {
-        this.refs.registerNickname.value = data.nickname || "";
-      })
-      .catch(() => {
-        this.refs.registerNickname.value = "";
-      });
-  },
-
-  hideRegister() {
-    this.refs.registerModal.classList.remove("is-open");
-    setTimeout(() => {
-      this.refs.registerModal.hidden = true;
     }, 200);
   },
 

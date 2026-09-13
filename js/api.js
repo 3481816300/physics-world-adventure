@@ -1,6 +1,4 @@
 const Api = {
-  ADMIN_REGISTER_KEY: "HarryLI@20120622",
-
   isSupabaseReady() {
     return Boolean(SUPABASE_CONFIG && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
   },
@@ -18,7 +16,7 @@ const Api = {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const message = data.code === "PGRST202"
-        ? "服务器兑换功能尚未启用，请稍后再试或联系开发者"
+        ? "云端功能尚未启用，请稍后再试或联系开发者"
         : data.message || (data.error && data.error.message) || "Supabase 请求失败";
       throw new Error(message);
     }
@@ -38,27 +36,6 @@ const Api = {
       throw new Error(data.error || "请求失败");
     }
     return data;
-  },
-
-  getRandomName() {
-    if (this.isSupabaseReady()) {
-      return this.supabaseRpc("get_random_name", {});
-    }
-    return this.request("/api/random-name");
-  },
-
-  register(nickname, password) {
-    if (this.isSupabaseReady()) {
-      return this.supabaseRpc("register_player", {
-        p_nickname: nickname,
-        p_password: password,
-        p_admin_password: this.ADMIN_REGISTER_KEY
-      });
-    }
-    return this.request("/api/register", {
-      method: "POST",
-      body: { nickname, password, adminPassword: this.ADMIN_REGISTER_KEY }
-    });
   },
 
   login(nickname, password) {
@@ -132,35 +109,6 @@ const Api = {
     });
   },
 
-  redeem(token, code) {
-    if (this.isSupabaseReady()) {
-      return this.supabaseRpc("redeem_code", {
-        p_token: token,
-        p_code: code
-      });
-    }
-    return this.request("/api/redeem", {
-      method: "POST",
-      body: { token, code }
-    });
-  },
-
-  createRedeemCodes(quantity = 1) {
-    if (this.isSupabaseReady()) {
-      return this.supabaseRpc("create_redeem_codes", {
-        p_admin_password: this.ADMIN_REGISTER_KEY,
-        p_quantity: quantity
-      });
-    }
-    return this.request("/api/redeem-codes", {
-      method: "POST",
-      body: {
-        adminPassword: this.ADMIN_REGISTER_KEY,
-        quantity
-      }
-    });
-  },
-
   ownerListAccounts(token) {
     if (this.isSupabaseReady()) {
       return this.supabaseRpc("owner_list_accounts", { p_token: token });
@@ -168,13 +116,16 @@ const Api = {
     return this.request(`/api/owner/list?token=${encodeURIComponent(token)}`);
   },
 
-  ownerCreateAccount(token) {
+  ownerCreateAccount(token, planName) {
     if (this.isSupabaseReady()) {
-      return this.supabaseRpc("owner_create_account", { p_token: token });
+      return this.supabaseRpc("owner_create_account", {
+        p_token: token,
+        p_plan: planName
+      });
     }
     return this.request("/api/owner/create", {
       method: "POST",
-      body: { token }
+      body: { token, plan: planName }
     });
   },
 
@@ -188,6 +139,20 @@ const Api = {
     return this.request("/api/owner/delete", {
       method: "POST",
       body: { token, nickname }
+    });
+  },
+
+  ownerUpdateNote(token, nickname, note) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("owner_update_note", {
+        p_token: token,
+        p_nickname: nickname,
+        p_note: note
+      });
+    }
+    return this.request("/api/owner/note", {
+      method: "POST",
+      body: { token, nickname, note }
     });
   }
 };

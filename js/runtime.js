@@ -336,7 +336,7 @@ class LevelRuntime {
 
     if (input.wasPressed("KeyR")) {
       this.respawn(false);
-      this.callbacks.onToast && this.callbacks.onToast("已重置到检查点");
+      this.callbacks.onToast && this.callbacks.onToast("已量置到检查点");
       return;
     }
 
@@ -1973,7 +1973,7 @@ class LevelRuntime {
     ctx.fillStyle = "#ffd166";
     ctx.font = "12px 'Microsoft YaHei', sans-serif";
     ctx.fillText(
-      `当前区域：${this.currentGravityLabel} · g≈${currentG} N/kg · 质量 50kg · 重量 ${(50 * currentG).toFixed(1)}N`,
+      `当前区域：${this.currentGravityLabel} · g≈${currentG} N/kg · 质量 50kg · 量量 ${(50 * currentG).toFixed(1)}N`,
       this.width / 2,
       52
     );
@@ -1987,7 +1987,7 @@ class LevelRuntime {
     if (this.dying) {
       ctx.fillStyle = "#ff5f6d";
       ctx.font = "800 18px 'Microsoft YaHei', sans-serif";
-      ctx.fillText("重新锚定中...", this.width / 2, 66);
+      ctx.fillText("量新锚定中...", this.width / 2, 66);
     }
 
     if (Input.isDown("F3")) {
@@ -2027,6 +2027,7 @@ class LevelRuntime {
         shuffleArray(options);
         next.options = options;
         next.answer = original === undefined ? step.answer : options.indexOf(original);
+        if (step.reviewOption) next.reviewIndex = options.indexOf(step.reviewOption);
       } else if (step.type === "formula" && Array.isArray(step.options)) {
         next.options = shuffleArray(step.options.slice());
         next.answers = (step.answers || []).slice();
@@ -2120,6 +2121,12 @@ class LevelRuntime {
   handleIntroChoice(index) {
     const step = this.intro.steps[this.intro.index];
     if (!step) return;
+    if (index === step.reviewIndex) {
+      this.intro.index = Math.max(0, this.intro.index - 1);
+      this.intro.choiceFeedback = null;
+      this.intro.feedback = { text: "再看一遍讲解", t: 0 };
+      return;
+    }
     if (this.intro.choiceFeedback && this.intro.choiceFeedback.correct) return;
     this.intro.choiceFeedback = {
       index,
@@ -2145,7 +2152,7 @@ class LevelRuntime {
       this.intro.formulaWrong += 1;
       this.callbacks.onToast && this.callbacks.onToast("符号位置不对");
       this.intro.feedback = { text: "再想想看", t: 0 };
-      if (this.intro.formulaWrong >= 2) { this.intro.formulaIndex = 0; this.intro.formulaFilled = []; this.intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则重置"); }
+      if (this.intro.formulaWrong >= 2) { this.intro.formulaIndex = 0; this.intro.formulaFilled = []; this.intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则量置"); }
     }
   }
   updateIntro(frame, input) {
@@ -2197,7 +2204,7 @@ class LevelRuntime {
             if (intro.formulaIndex >= step.answers.length) this.advanceIntro();
           } else {
             intro.formulaWrong += 1;
-            if (intro.formulaWrong >= 2) { intro.formulaIndex = 0; intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则重置"); }
+            if (intro.formulaWrong >= 2) { intro.formulaIndex = 0; intro.formulaWrong = 0; this.callbacks.onToast && this.callbacks.onToast("符号错乱，法则量置"); }
             else this.callbacks.onToast && this.callbacks.onToast("符号位置不对");
           }
           return;
@@ -2227,8 +2234,12 @@ class LevelRuntime {
     if (intro.appleScene !== scene) {
       intro.appleScene = scene;
       intro.apple = step.dropApple
-        ? { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0 }
+        ? { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0, stepIndex: intro.index }
         : null;
+      return;
+    }
+    if (step.dropApple && (!intro.apple || intro.apple.stepIndex !== intro.index)) {
+      intro.apple = { scene, state: "held", x: 660, y: 352, vx: 0, vy: 0, rotation: 0, bounces: 0, settleTimer: 0, stepIndex: intro.index };
       return;
     }
     if (!step.dropApple && intro.apple && intro.apple.state !== "rolling") {

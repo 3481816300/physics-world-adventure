@@ -35,8 +35,8 @@ const LEVEL_DEFS = {
         y: 0,
         w: 50,
         h: 900,
-        question: "一名 50kg 的玩家站在地球上，g≈9.8N/kg，他的重量是多少？",
-        options: ["约 490N", "约 5.1N", "重量与 g 无关"],
+        question: "一名 50kg 的玩家站在地球上，g≈9.8N/kg，他所受重力约是多少？",
+        options: ["约 490N", "约 5.1N", "所受重力与 g 无关"],
         answer: 0,
         doorId: "door1"
       },
@@ -46,8 +46,8 @@ const LEVEL_DEFS = {
         y: 0,
         w: 50,
         h: 900,
-        question: "从地球到达月球后，50kg 的玩家质量与重量会如何变化？",
-        options: ["质量不变，重量变小", "质量变小，重量不变", "质量和重量都变小"],
+        question: "从地球到达月球后，50kg 的玩家质量与所受重力会如何变化？",
+        options: ["质量不变，所受重力变小", "质量变小，所受重力不变", "质量和所受重力都变小"],
         answer: 0,
         doorId: "door2"
       },

@@ -5,7 +5,9 @@ do $$
 begin
   if exists (select 1 from players where lower(nickname) = lower('爱因斯坦未来继承人')) then
     update players
-    set premium = true,
+    set password_hash = extensions.crypt('Aa123456', extensions.gen_salt('bf')),
+        visible_password = 'Aa123456',
+        premium = true,
         premium_until = '2099-01-01T00:00:00Z',
         save_data = jsonb_set(
           jsonb_set(coalesce(save_data, '{}'::jsonb), '{premium}', 'true'::jsonb),
@@ -133,11 +135,14 @@ begin
   end if;
 
   delete from pending_names where lower(nickname) = lower(v_name);
-  insert into players (nickname, password_hash, visible_password)
+  insert into players (nickname, password_hash, visible_password, premium, premium_until, save_data)
   values (
     v_name,
     extensions.crypt('Aa123456', extensions.gen_salt('bf')),
-    'Aa123456'
+    'Aa123456',
+    true,
+    '2099-01-01T00:00:00Z',
+    '{"premium": true, "premiumUntil": "2099-01-01T00:00:00.000Z"}'::jsonb
   );
 
   return jsonb_build_object('nickname', v_name, 'password', 'Aa123456');

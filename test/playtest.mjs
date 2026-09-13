@@ -327,26 +327,43 @@ try {
   const accountResult = await evaluate(
     client,
     `(async () => {
-      const name = "T" + Math.floor(Math.random() * 100000);
-      const registered = await Api.register(name, "1234");
-      let duplicateError = "";
-      try {
-        await Api.register(name, "1234");
-      } catch (error) {
-        duplicateError = error.message;
-      }
-      const renamed = await Api.rename(registered.token, name + "R");
-      const login = await Api.login(name + "R", "1234");
+      Save.setServerSession("LocalA", "tokenA", {});
+      Save.setServerSession("LocalB", "tokenB", {});
+      const beforeDedupe = Save.getServerAccounts().length;
+      Save.setServerSession("LocalA", "tokenA2", {});
+      const afterDedupe = Save.getServerAccounts().length;
+      Save.switchServerAccount("tokenB");
+      const current = Save.getAccountName();
+      const hasPublicRegister = Boolean(document.querySelector("#registerModal, #btn-register-submit, #btn-random-name"));
+      Save.serverAccounts = {};
+      localStorage.removeItem("physics-server-accounts");
       Save.clearServerSession();
       return {
-        registered: registered.nickname,
-        duplicateError,
-        renamed: renamed.nickname,
-        login: login.nickname
+        beforeDedupe,
+        afterDedupe,
+        current,
+        hasPublicRegister
       };
     })()`
   );
   console.log(`account: ${JSON.stringify(accountResult)}`);
+
+  const ownerManagerResult = await evaluate(
+    client,
+    `(() => {
+      Save.setServerSession("爱因斯坦未来继承人", "owner-token", {}, "Aa123456");
+      App.openOwnerAccounts();
+      return {
+        screen: App.screen,
+        ownerActive: document.getElementById("screen-owner").classList.contains("is-active"),
+        hasTable: Boolean(document.querySelector(".owner-accounts-table")),
+        hasNoteColumn: Array.from(document.querySelectorAll(".owner-accounts-table th")).some((th) => th.textContent === "内部备注"),
+        hasCreate: Boolean(document.getElementById("btn-owner-create")),
+        hasBack: Boolean(document.getElementById("btn-owner-back"))
+      };
+    })()`
+  );
+  console.log(`ownerManager: ${JSON.stringify(ownerManagerResult)}`);
 
   const multiAccountResult = await evaluate(
     client,

@@ -194,6 +194,62 @@
       <div class="account-panel" id="accountPanel"></div>
     </section>
 
+    <section id="screen-owner" class="screen" data-screen="owner">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-owner-back" type="button" aria-label="返回账号管理">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>所有者管理</h2>
+          <p>服务器账号总览</p>
+        </div>
+        <div class="topbar-right"></div>
+      </header>
+      <div class="owner-manager-shell">
+        <div class="owner-manager-toolbar">
+          <label class="owner-plan-field" for="ownerPlanSelect">
+            <span>爱发电档位</span>
+            <select id="ownerPlanSelect" class="owner-plan-select" aria-label="选择爱发电档位"></select>
+          </label>
+          <button class="btn btn-primary" id="btn-owner-create" type="button">注册新账号</button>
+        </div>
+        <div class="owner-table-wrap">
+          <table class="owner-accounts-table">
+            <thead>
+              <tr>
+                <th>账号昵称</th>
+                <th>状态</th>
+                <th>当前密码</th>
+                <th>内部备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="ownerAccountsList"></tbody>
+          </table>
+        </div>
+<div class="owner-welcome-panel" id="ownerWelcomePanel" hidden>
+          <div class="owner-welcome-head">
+            <strong>账号发送信息</strong>
+            <button class="btn btn-ghost" id="btn-owner-copy" type="button">复制信息</button>
+          </div>
+          <textarea id="ownerWelcomeText" class="redeem-result owner-welcome owner-welcome-result" readonly></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-owner-data" class="screen" data-screen="owner-data">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-owner-data-back" type="button" aria-label="返回所有者管理">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="topbar-center">
+          <h2>数据中心</h2>
+          <p>用户数据与进度分析</p>
+        </div>
+        <div class="topbar-right"></div>
+      </header>
+      <div class="owner-analytics-shell" id="ownerAnalytics"></div>
+    </section>
     <div id="pauseOverlay" class="overlay" hidden>
       <div class="pause-layout">
         <div class="modal pause-actions">
@@ -266,50 +322,6 @@
       </div>
     </div>
 
-    <div id="purchaseModal" class="modal-backdrop" hidden>
-      <div class="modal purchase-modal" role="dialog" aria-modal="true" aria-labelledby="purchaseTitle">
-        <h2 id="purchaseTitle">购买完整版</h2>
-        <div class="purchase-content">
-          <div class="purchase-price"><strong>¥9.9</strong><span>早期完整版 · 后续章节免费更新</span></div>
-          <p class="modal-copy">第一关免费试玩。购买后在店铺页面领取兑换码，回到游戏内输入即可解锁当前账号的全部已发布内容。</p>
-          <p class="modal-copy">支持《物律远征》可以通过下方赞助页面，或直接联系开发者获取账号。</p>
-          <a class="support-link" href="https://ifdian.net/a/aystwljcr" target="_blank" rel="noopener">爱发电赞助</a>
-          <a class="support-link" href="https://space.bilibili.com/589748677?spm_id_from=333.1007.0.0" target="_blank" rel="noopener">B 站充电</a>
-          <button class="btn btn-ghost" id="btn-purchase-contact" type="button">联系开发者</button>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" id="btn-purchase-close" type="button">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="redeemModal" class="modal-backdrop" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="redeemTitle">
-        <h2 id="redeemTitle">兑换完整版</h2>
-        <p class="modal-copy">输入购买后获得的兑换码。兑换成功后，当前账号立即解锁完整版内容。</p>
-        <input id="redeemCode" class="text-input" placeholder="兑换码" autocomplete="off" spellcheck="false" enterkeyhint="go">
-        <p class="modal-error" id="redeemError" hidden></p>
-        <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-redeem-submit" type="button">确认兑换</button>
-          <button class="btn btn-ghost" id="btn-redeem-cancel" type="button">取消</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="redeemBatchModal" class="modal-backdrop" hidden>
-      <div class="modal redeem-batch-modal" role="dialog" aria-modal="true" aria-labelledby="redeemBatchTitle">
-        <h2 id="redeemBatchTitle">生成兑换码</h2>
-        <p class="modal-copy">管理员可生成测试兑换码；正式售卖时建议直接把店铺生成的卡密导入 Supabase。</p>
-        <input id="redeemBatchCount" class="text-input" type="number" min="1" max="50" value="1" aria-label="生成数量">
-        <textarea id="redeemBatchResult" class="redeem-result" readonly aria-label="生成的兑换码"></textarea>
-        <p class="modal-error" id="redeemBatchError" hidden></p>
-        <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-redeem-batch-submit" type="button">生成</button>
-          <button class="btn btn-ghost" id="btn-redeem-batch-close" type="button">关闭</button>
-        </div>
-      </div>
-    </div>
-
     <div id="devSupportModal" class="modal-backdrop" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="devSupportTitle">
         <h2 id="devSupportTitle">章节开发中</h2>
@@ -320,26 +332,6 @@
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="btn-support-close" type="button">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="registerModal" class="modal-backdrop" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="registerTitle">
-        <h2 id="registerTitle">注册账号</h2>
-        <p class="modal-copy">昵称将在服务器上唯一保存，密码用于其他设备登录。</p>
-        <div class="register-fields">
-          <div class="register-row">
-            <input id="registerNickname" class="text-input" maxlength="16" placeholder="随机昵称">
-            <button class="btn btn-ghost" id="btn-random-name" type="button">换一个</button>
-          </div>
-          <input id="registerPassword" class="text-input" type="password" placeholder="密码（至少 4 位）">
-          <input id="registerPasswordConfirm" class="text-input" type="password" placeholder="确认密码">
-        </div>
-        <p class="modal-error" id="registerError" hidden></p>
-        <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-register-submit" type="button">注册</button>
-          <button class="btn btn-ghost" id="btn-register-cancel" type="button">返回</button>
         </div>
       </div>
     </div>
@@ -371,19 +363,6 @@
         <div class="modal-actions">
           <button class="btn btn-primary" id="btn-password-submit" type="button">确认修改</button>
           <button class="btn btn-ghost" id="btn-password-cancel" type="button">取消</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="ownerAccountsModal" class="modal-backdrop" hidden>
-      <div class="modal owner-modal" role="dialog" aria-modal="true" aria-labelledby="ownerAccountsTitle">
-        <h2 id="ownerAccountsTitle">所有者管理</h2>
-        <p class="modal-copy">这里可以查看服务器全部账号、注册新账号或注销账号。</p>
-        <div class="owner-account-list" id="ownerAccountsList"></div>
-        <textarea id="ownerWelcomeText" class="redeem-result owner-welcome" readonly hidden></textarea>
-        <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-owner-create" type="button">注册新账号</button>
-          <button class="btn btn-ghost" id="btn-owner-close" type="button">关闭</button>
         </div>
       </div>
     </div>
@@ -448,6 +427,7 @@
   <script src="js/save.js"></script>
   <script src="js/input.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/owner-analytics.js"></script>
   <script src="js/runtime.js"></script>
   <script src="js/app.js"></script>
 </body>

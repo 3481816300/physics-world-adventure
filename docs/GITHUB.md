@@ -12,14 +12,7 @@ GitHub 可以免费托管游戏前端：
 
 GitHub Pages 只能托管静态文件，不能运行 `server.js`，也不能保存 `accounts.json`。
 
-所以：
-
-- 注册账号
-- 登录账号
-- 跨设备同步存档
-- 修改密码
-
-这些功能在纯 GitHub Pages 上无法使用。
+所以账号登录、存档同步等数据功能需要由 Supabase 提供，不能只靠 GitHub Pages。
 
 ## 部署前端到 GitHub Pages
 
@@ -44,6 +37,4 @@ GitHub Pages 只能托管静态文件，不能运行 `server.js`，也不能保�
 
 然后把前端里的 `js/api.js` 改成请求云数据库，而不是请求本机 `server.js`。
 
-目前这一步还没有做。如果继续做，我会把注册、登录、存档同步、修改密码全部接到 Supabase。
-
-完整步骤见 [SUPABASE.md](SUPABASE.md)。
+当前前端已经接入 Supabase，公开页面不提供自助注册。完整步骤见 [SUPABASE.md](SUPABASE.md)。

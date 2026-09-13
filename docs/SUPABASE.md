@@ -64,17 +64,20 @@ GitHub Actions 会自动部署到 GitHub Pages。
 
 ## 已经支持的功能
 
-- 注册账号
 - 登录账号
 - 唯一昵称校验
-- 30 分钟内修改昵称
 - 修改密码
 - 保存/读取存档
-- 退出登录
-- 1000 个随机昵称池
+- 退出普通账号
+- 所有者查看、创建、注销账号
+- 所有者注册时从昵称池随机分配昵称
+- 所有者可为每个账号保存内部备注，普通账号不可见
 
 ## 注意事项
 
+- 公开注册与兑换码 RPC 已从 anon 角色撤销，前端也不提供自助注册入口
+- 所有者管理 SQL 见 `supabase/migrations/20260906_owner_management.sql`
+- 账号内部备注 SQL 见 `supabase/migrations/20260906_owner_account_notes.sql`
 - 数据库函数由 Supabase 数据库端处理，密码使用 `crypt` 哈希保存
 - 前端只使用 anon key，不暴露数据库密钥
 - 免费版足够当前游戏使用

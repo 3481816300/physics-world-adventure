@@ -144,27 +144,21 @@ const App = {
     document.getElementById("btn-onboard-login").addEventListener("click", () => UI.openLogin());
     document.getElementById("btn-onboard-contact").addEventListener("click", () => UI.openContact("购买 / 赞助"));
     document.getElementById("btn-onboard-guest").addEventListener("click", () => this.enterGuest());
-    document.getElementById("btn-random-name").addEventListener("click", () => this.refreshRandomName());
-    document.getElementById("btn-register-submit").addEventListener("click", () => this.registerAccount());
-    document.getElementById("btn-register-cancel").addEventListener("click", () => UI.hideRegister());
     document.getElementById("btn-login-submit").addEventListener("click", () => this.loginAccount());
     document.getElementById("btn-login-cancel").addEventListener("click", () => UI.hideLogin());
     document.getElementById("btn-password-submit").addEventListener("click", () => this.changePassword());
     document.getElementById("btn-password-cancel").addEventListener("click", () => UI.hidePasswordModal());
     document.getElementById("btn-login-to-contact").addEventListener("click", () => {
       UI.hideLogin();
-      UI.openPurchase();
+      UI.openContact("获取完整版账号");
     });
     document.getElementById("btn-contact-close").addEventListener("click", () => UI.hideContact());
-    document.getElementById("btn-purchase-close").addEventListener("click", () => UI.hidePurchase());
-    document.getElementById("btn-purchase-contact").addEventListener("click", () => {
-      UI.hidePurchase();
-      UI.openContact();
-    });
     document.getElementById("btn-support-close").addEventListener("click", () => UI.hideDevSupport());
     document.getElementById("btn-background-continue").addEventListener("click", () => this.finishBackground());
     document.getElementById("btn-owner-create").addEventListener("click", () => this.ownerCreateAccount());
-    document.getElementById("btn-owner-close").addEventListener("click", () => UI.hideOwnerAccounts());
+    document.getElementById("btn-owner-copy").addEventListener("click", () => this.copyOwnerWelcome());
+    document.getElementById("btn-owner-back").addEventListener("click", () => this.openAccount());
+    document.getElementById("btn-owner-data-back").addEventListener("click", () => this.openOwnerAccounts());
     document.getElementById("btn-intro-continue").addEventListener("click", () => this.continueChapterIntro());
     document.getElementById("btn-intro-skip").addEventListener("click", () => this.skipChapterIntro());
     document.getElementById("btn-poem-continue").addEventListener("click", () => this.finishEndPoem());
@@ -335,46 +329,6 @@ const App = {
     this.maybeShowNextRequiredModal();
   },
 
-  refreshRandomName() {
-    Api.getRandomName()
-      .then((data) => {
-        UI.refs.registerNickname.value = data.nickname || "";
-      })
-      .catch((error) => UI.showToast(error.message));
-  },
-
-  registerAccount() {
-    const nickname = UI.refs.registerNickname.value.trim();
-    const password = UI.refs.registerPassword.value;
-    const confirm = UI.refs.registerPasswordConfirm.value;
-    if (!nickname || password.length < 4) {
-      UI.refs.registerError.textContent = "昵称不能为空，密码至少 4 位";
-      UI.refs.registerError.hidden = false;
-      return;
-    }
-    if (password !== confirm) {
-      UI.refs.registerError.textContent = "两次密码不一致";
-      UI.refs.registerError.hidden = false;
-      return;
-    }
-    Api.register(nickname, password)
-      .then((data) => {
-        Save.setServerSession(data.nickname, data.token, data.saveData, password);
-        Save.setOnboarded();
-        UI.hideRegister();
-        UI.hideOnboarding();
-        UI.updateAccountButton();
-        UI.renderDifficultySelector();
-        UI.showToast(`注册成功，欢迎 ${data.nickname}`);
-        this.showTitle();
-        this.maybeShowNextRequiredModal();
-      })
-      .catch((error) => {
-        UI.refs.registerError.textContent = error.message;
-        UI.refs.registerError.hidden = false;
-      });
-  },
-
   loginAccount() {
     const nickname = UI.refs.loginNickname.value.trim();
     const password = UI.refs.loginPassword.value;
@@ -423,9 +377,38 @@ const App = {
 
   openOwnerAccounts() {
     if (!Save.isAdmin()) return;
-    UI.openOwnerAccounts();
+    this.clearCompletionTimer();
+    UI.hideCompletion();
+    this.screen = "owner";
+    UI.show("owner");
+    UI.setAdminBadges(Save.isAdmin());
+    UI.refs.ownerWelcomePanel.hidden = true;
+    UI.renderOwnerAccounts([]);
+    Input.gameActive = false;
+    this.loadOwnerAccounts();
   },
 
+  openOwnerAnalytics() {
+    if (!Save.isAdmin()) return;
+    this.clearCompletionTimer();
+    UI.hideCompletion();
+    this.screen = "owner-data";
+    UI.show("owner-data");
+    UI.setAdminBadges(Save.isAdmin());
+    OwnerAnalytics.render([], { loading: true });
+    Input.gameActive = false;
+    this.loadOwnerAnalytics();
+  },
+
+  async loadOwnerAnalytics() {
+    if (!Save.isAdmin()) return;
+    try {
+      const data = await Api.ownerListAccounts(Save.serverToken);
+      OwnerAnalytics.render(Array.isArray(data.accounts) ? data.accounts : []);
+    } catch (error) {
+      OwnerAnalytics.render([], { error: error.message || "读取用户数据失败" });
+    }
+  },
   async loadOwnerAccounts() {
     if (!Save.isAdmin()) return;
     try {
@@ -438,19 +421,33 @@ const App = {
 
   async ownerCreateAccount() {
     if (!Save.isAdmin()) return;
+    const plan = UI.getSelectedOwnerPlan();
     const button = document.getElementById("btn-owner-create");
     button.disabled = true;
     try {
-      const account = await Api.ownerCreateAccount(Save.serverToken);
-      UI.setOwnerWelcome(account);
+      const account = await Api.ownerCreateAccount(Save.serverToken, plan.name);
+      UI.setOwnerWelcome(account, plan);
       await this.loadOwnerAccounts();
+      UI.refs.ownerWelcomePanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
-      UI.showToast(error.message || "注册账号失败");
+      UI.showToast(error.message || "创建账号失败");
     } finally {
       button.disabled = false;
     }
   },
 
+  async copyOwnerWelcome() {
+    const value = UI.refs.ownerWelcomeText.value;
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      UI.refs.ownerWelcomeText.focus();
+      UI.refs.ownerWelcomeText.select();
+      document.execCommand("copy");
+    }
+    UI.showToast("账号发送信息已复制");
+  },
   async deleteOwnerAccount(nickname) {
     if (!Save.isAdmin()) return;
     if (!window.confirm(`确认注销账号 ${nickname}？`)) return;
@@ -460,6 +457,24 @@ const App = {
       await this.loadOwnerAccounts();
     } catch (error) {
       UI.showToast(error.message || "注销失败");
+    }
+  },
+
+  async saveOwnerNote(nickname, input, button) {
+    if (!Save.isAdmin()) return;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "保存中";
+    try {
+      await Api.ownerUpdateNote(Save.serverToken, nickname, input.value);
+      UI.showToast("内部备注已保存");
+      await this.loadOwnerAccounts();
+    } catch (error) {
+      input.focus();
+      UI.showToast(error.message || "备注保存失败");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
     }
   },
 
@@ -496,81 +511,6 @@ const App = {
       UI.showToast(`当前密码：${Save.serverPassword}`);
     } else {
       UI.showToast("本会话未记录密码，请重新登录后查看");
-    }
-  },
-
-  togglePremium() {
-    if (!Save.isAdmin()) return;
-    const next = !Save.data.premium;
-    Save.setPremium(next, 12);
-    UI.renderAccount();
-    UI.showToast(next ? "已标记为付费用户" : "已撤销付费标记");
-  },
-
-  async redeemCode() {
-    if (Save.isGuest()) {
-      UI.hideRedeem();
-      UI.openLogin();
-      return;
-    }
-    const code = UI.refs.redeemCode.value.trim();
-    const error = UI.refs.redeemError;
-    if (!code) {
-      error.textContent = "请输入兑换码";
-      error.hidden = false;
-      return;
-    }
-
-    const button = document.getElementById("btn-redeem-submit");
-    const original = button.textContent;
-    button.disabled = true;
-    button.textContent = "验证中";
-    try {
-      const result = await Api.redeem(Save.serverToken, code);
-      Save.applyPremium(result.premium_until || result.premiumUntil);
-      UI.hideRedeem();
-      UI.renderAccount();
-      UI.showToast("兑换成功，完整版已解锁");
-      if (this.screen === "chapters") {
-        UI.renderChapters();
-      }
-      if (this.screen === "levels" && this.currentChapter) {
-        UI.renderLevels(this.currentChapter, this.currentIsFinal);
-      }
-    } catch (err) {
-      error.textContent = err.message || "兑换失败，请稍后再试";
-      error.hidden = false;
-    } finally {
-      button.disabled = false;
-      button.textContent = original;
-    }
-  },
-
-  openRedeemBatch() {
-    if (!Save.isAdmin()) return;
-    UI.openRedeemBatch();
-  },
-
-  async generateRedeemCodes() {
-    if (!Save.isAdmin()) return;
-    const count = Math.min(50, Math.max(1, Number(UI.refs.redeemBatchCount.value) || 1));
-    const error = UI.refs.redeemBatchError;
-    const result = UI.refs.redeemBatchResult;
-    const button = document.getElementById("btn-redeem-batch-submit");
-    button.disabled = true;
-    button.textContent = "生成中";
-    try {
-      const data = await Api.createRedeemCodes(count);
-      const codes = Array.isArray(data.codes) ? data.codes : [];
-      result.value = codes.join("\n");
-      error.hidden = true;
-      UI.showToast(`已生成 ${codes.length} 个兑换码`);
-    } catch (err) {
-      error.textContent = err.message || "生成失败";
-      error.hidden = false;
-    } finally {
-      button.disabled = false;
-      button.textContent = "生成";
     }
   },
 
