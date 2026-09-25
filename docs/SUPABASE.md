@@ -87,10 +87,11 @@ GitHub Actions 会自动部署到 GitHub Pages。
 反馈数据保存在 `feedback_entries`，前端通过 `feedback_access` 和 `submit_feedback` 提交。SQL 迁移见：
 
 ```text
-supabase/migrations/20260917_feedback.sql
+supabase/migrations/20260917_feedback.sql\r
+supabase/migrations/20260925_feedback_digest.sql
 ```
 
 GitHub Actions 每月会创建一份反馈 Issue 并分配给仓库所有者：
 
-- `SUPABASE_SERVICE_ROLE_KEY`：必填，用于读取和标记反馈
+- `FEEDBACK_DIGEST_TOKEN`：必填，由数据库里的反馈汇总令牌提供，仅能读取和标记反馈
 - `QQ_SMTP_AUTH_CODE`：可选，用于从 `3481816300@qq.com` 直接发送邮件

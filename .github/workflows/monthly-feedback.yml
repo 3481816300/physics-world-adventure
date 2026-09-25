@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: https://ykqdwgqomenprbbmalqk.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_ANON_KEY: sb_publishable_Ws6JZast0GGLQpg8ncWDCg_z4CFQT_A
+      FEEDBACK_DIGEST_TOKEN: ${{ secrets.FEEDBACK_DIGEST_TOKEN }}
       QQ_SMTP_AUTH_CODE: ${{ secrets.QQ_SMTP_AUTH_CODE }}
     steps:
       - name: Create monthly issue
@@ -24,12 +25,21 @@ jobs:
           script: |
             const fs = require('fs');
             const base = process.env.SUPABASE_URL;
-            const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-            if (!key) throw new Error('Missing repository secret SUPABASE_SERVICE_ROLE_KEY');
-            const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
-            const response = await fetch(`${base}/rest/v1/feedback_entries?status=eq.open&select=id,kind,title,content,page,contact,plan,created_at&order=created_at.asc`, { headers });
+            const headers = {
+              apikey: process.env.SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json'
+            };
+            const token = process.env.FEEDBACK_DIGEST_TOKEN;
+            if (!token) throw new Error('Missing repository secret FEEDBACK_DIGEST_TOKEN');
+            const response = await fetch(`${base}/rest/v1/rpc/feedback_digest`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ p_token: token })
+            });
             if (!response.ok) throw new Error(await response.text());
-            const entries = await response.json();
+            const payload = await response.json();
+            const entries = payload.entries || [];
             const month = new Date().toISOString().slice(0, 7);
             if (!entries.length) {
               fs.writeFileSync('feedback-digest.md', `# ${month} 用户反馈月报\n\n本月没有新的待处理反馈。\n`);
@@ -63,13 +73,16 @@ jobs:
               body,
               assignees: [context.repo.owner]
             });
-            const ids = entries.map((item) => item.id).join(',');
-            const update = await fetch(`${base}/rest/v1/feedback_entries?id=in.(${ids})`, {
-              method: 'PATCH',
-              headers: { ...headers, Prefer: 'return=minimal' },
-              body: JSON.stringify({ status: 'processed', processed_at: new Date().toISOString(), issue_url: issue.data.html_url })
+            const complete = await fetch(`${base}/rest/v1/rpc/feedback_digest_complete`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                p_token: token,
+                p_ids: entries.map((item) => item.id),
+                p_issue_url: issue.data.html_url
+              })
             });
-            if (!update.ok) throw new Error(await update.text());
+            if (!complete.ok) throw new Error(await complete.text());
             fs.writeFileSync('feedback-digest.md', body);
             core.setOutput('count', String(entries.length));
             core.notice(`Created feedback issue: ${issue.data.html_url}`);
