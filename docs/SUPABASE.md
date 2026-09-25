@@ -91,7 +91,7 @@ supabase/migrations/20260917_feedback.sql\r
 supabase/migrations/20260925_feedback_digest.sql
 ```
 
-GitHub Actions 每周五会检查待处理反馈，并为每条反馈单独创建一个 Issue：
+GitHub Actions 每 15 分钟检查一次待处理反馈，并只向所有者邮箱发送通知：
 
 - `FEEDBACK_DIGEST_TOKEN`：必填，由数据库里的反馈汇总令牌提供，仅能读取和标记反馈
-- 每个 Issue 自动分配给仓库所有者并通过 GitHub 邮件通知
+- 通知邮件发送到 `3481816300@qq.com`，不会给用户发送邮件
