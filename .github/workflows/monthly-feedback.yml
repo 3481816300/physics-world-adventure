@@ -1,8 +1,8 @@
-name: Monthly feedback digest
+name: Weekly feedback issues
 
 on:
   schedule:
-    - cron: "0 1 1 * *"
+    - cron: "0 1 * * 5"
   workflow_dispatch:
 
 permissions:
@@ -10,20 +10,18 @@ permissions:
   issues: write
 
 jobs:
-  digest:
+  create-issues:
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: https://ykqdwgqomenprbbmalqk.supabase.co
       SUPABASE_ANON_KEY: sb_publishable_Ws6JZast0GGLQpg8ncWDCg_z4CFQT_A
       FEEDBACK_DIGEST_TOKEN: ${{ secrets.FEEDBACK_DIGEST_TOKEN }}
-      QQ_SMTP_AUTH_CODE: ${{ secrets.QQ_SMTP_AUTH_CODE }}
     steps:
-      - name: Create monthly issue
+      - name: Create one issue per feedback
         id: digest
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
             const base = process.env.SUPABASE_URL;
             const headers = {
               apikey: process.env.SUPABASE_ANON_KEY,
@@ -40,70 +38,49 @@ jobs:
             if (!response.ok) throw new Error(await response.text());
             const payload = await response.json();
             const entries = payload.entries || [];
-            const month = new Date().toISOString().slice(0, 7);
             if (!entries.length) {
-              fs.writeFileSync('feedback-digest.md', `# ${month} 用户反馈月报\n\n本月没有新的待处理反馈。\n`);
-              core.setOutput('count', '0');
               core.notice('No open feedback entries');
+              core.setOutput('count', '0');
               return;
             }
-            const bug = entries.filter((item) => item.kind === 'bug');
-            const idea = entries.filter((item) => item.kind === 'idea');
-            const formatEntries = (items) => items.length ? items.map((item, index) => {
-              const content = String(item.content || '').replace(/\r/g, '').replace(/\n/g, '\n  ');
-              return `${index + 1}. **${item.title}**\n  - 时间：${item.created_at}\n  - 档位：${item.plan || '未标记'}\n  - 页面：${item.page || '未记录'}\n  - 联系方式：${item.contact || '未填写'}\n  - 详情：${content}`;
-            }).join('\n\n') : '本月无。';
-            const body = [
-              '@3481816300 请查收本月用户反馈汇总。',
-              '',
-              `## Bug 反馈（${bug.length}）`,
-              '',
-              formatEntries(bug),
-              '',
-              `## 意见反馈（${idea.length}）`,
-              '',
-              formatEntries(idea),
-              '',
-              '> 请在对应条目下集中回复。处理完成后可关闭本 Issue。'
-            ].join('\n');
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `[用户反馈月报] ${month}`,
-              body,
-              assignees: [context.repo.owner]
-            });
-            const complete = await fetch(`${base}/rest/v1/rpc/feedback_digest_complete`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                p_token: token,
-                p_ids: entries.map((item) => item.id),
-                p_issue_url: issue.data.html_url
-              })
-            });
-            if (!complete.ok) throw new Error(await complete.text());
-            fs.writeFileSync('feedback-digest.md', body);
-            core.setOutput('count', String(entries.length));
-            core.notice(`Created feedback issue: ${issue.data.html_url}`);
 
-      - name: Email digest to owner
-        if: ${{ env.QQ_SMTP_AUTH_CODE != '' && steps.digest.outputs.count != '0' }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import os
-          import smtplib
-          from email.message import EmailMessage
-          sender = "3481816300@qq.com"
-          recipient = "3481816300@qq.com"
-          message = EmailMessage()
-          message["Subject"] = "物律远征用户反馈月报"
-          message["From"] = sender
-          message["To"] = recipient
-          with open("feedback-digest.md", "r", encoding="utf-8") as file:
-              message.set_content(file.read())
-          with smtplib.SMTP_SSL("smtp.qq.com", 465) as smtp:
-              smtp.login(sender, os.environ["QQ_SMTP_AUTH_CODE"])
-              smtp.send_message(message)
-          PY
+            let created = 0;
+            for (const item of entries) {
+              const kindLabel = item.kind === 'bug' ? 'Bug 反馈' : '意见反馈';
+              const content = String(item.content || '').replace(/\r/g, '').trim();
+              const body = [
+                '@3481816300 请查收一条用户反馈。',
+                '',
+                `- 类型：${kindLabel}`,
+                `- 时间：${item.created_at}`,
+                `- 档位：${item.plan || '未标记'}`,
+                `- 页面：${item.page || '未记录'}`,
+                `- 联系方式：${item.contact || '未填写'}`,
+                '',
+                '## 详细情况',
+                '',
+                content,
+                '',
+                '> 请直接在评论中回复。处理完成后关闭本 Issue。'
+              ].join('\n');
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[${kindLabel}] ${item.title}`,
+                body,
+                assignees: [context.repo.owner]
+              });
+              const complete = await fetch(`${base}/rest/v1/rpc/feedback_digest_complete`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  p_token: token,
+                  p_ids: [item.id],
+                  p_issue_url: issue.data.html_url
+                })
+              });
+              if (!complete.ok) throw new Error(await complete.text());
+              created += 1;
+            }
+            core.setOutput('count', String(created));
+            core.notice(`Created ${created} feedback issue(s)`);

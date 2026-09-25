@@ -91,7 +91,7 @@ supabase/migrations/20260917_feedback.sql\r
 supabase/migrations/20260925_feedback_digest.sql
 ```
 
-GitHub Actions 每月会创建一份反馈 Issue 并分配给仓库所有者：
+GitHub Actions 每周五会检查待处理反馈，并为每条反馈单独创建一个 Issue：
 
 - `FEEDBACK_DIGEST_TOKEN`：必填，由数据库里的反馈汇总令牌提供，仅能读取和标记反馈
-- `QQ_SMTP_AUTH_CODE`：可选，用于从 `3481816300@qq.com` 直接发送邮件
+- 每个 Issue 自动分配给仓库所有者并通过 GitHub 邮件通知
