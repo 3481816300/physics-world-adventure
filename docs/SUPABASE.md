@@ -81,3 +81,16 @@ GitHub Actions 会自动部署到 GitHub Pages。
 - 数据库函数由 Supabase 数据库端处理，密码使用 `crypt` 哈希保存
 - 前端只使用 anon key，不暴露数据库密钥
 - 免费版足够当前游戏使用
+
+## 用户反馈月报
+
+反馈数据保存在 `feedback_entries`，前端通过 `feedback_access` 和 `submit_feedback` 提交。SQL 迁移见：
+
+```text
+supabase/migrations/20260917_feedback.sql
+```
+
+GitHub Actions 每月会创建一份反馈 Issue 并分配给仓库所有者：
+
+- `SUPABASE_SERVICE_ROLE_KEY`：必填，用于读取和标记反馈
+- `QQ_SMTP_AUTH_CODE`：可选，用于从 `3481816300@qq.com` 直接发送邮件

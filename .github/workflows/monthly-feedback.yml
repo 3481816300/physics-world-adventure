@@ -1,0 +1,96 @@
+name: Monthly feedback digest
+
+on:
+  schedule:
+    - cron: "0 1 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://ykqdwgqomenprbbmalqk.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      QQ_SMTP_AUTH_CODE: ${{ secrets.QQ_SMTP_AUTH_CODE }}
+    steps:
+      - name: Create monthly issue
+        id: digest
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const base = process.env.SUPABASE_URL;
+            const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            if (!key) throw new Error('Missing repository secret SUPABASE_SERVICE_ROLE_KEY');
+            const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+            const response = await fetch(`${base}/rest/v1/feedback_entries?status=eq.open&select=id,kind,title,content,page,contact,plan,created_at&order=created_at.asc`, { headers });
+            if (!response.ok) throw new Error(await response.text());
+            const entries = await response.json();
+            const month = new Date().toISOString().slice(0, 7);
+            if (!entries.length) {
+              fs.writeFileSync('feedback-digest.md', `# ${month} 用户反馈月报\n\n本月没有新的待处理反馈。\n`);
+              core.setOutput('count', '0');
+              core.notice('No open feedback entries');
+              return;
+            }
+            const bug = entries.filter((item) => item.kind === 'bug');
+            const idea = entries.filter((item) => item.kind === 'idea');
+            const formatEntries = (items) => items.length ? items.map((item, index) => {
+              const content = String(item.content || '').replace(/\r/g, '').replace(/\n/g, '\n  ');
+              return `${index + 1}. **${item.title}**\n  - 时间：${item.created_at}\n  - 档位：${item.plan || '未标记'}\n  - 页面：${item.page || '未记录'}\n  - 联系方式：${item.contact || '未填写'}\n  - 详情：${content}`;
+            }).join('\n\n') : '本月无。';
+            const body = [
+              '@3481816300 请查收本月用户反馈汇总。',
+              '',
+              `## Bug 反馈（${bug.length}）`,
+              '',
+              formatEntries(bug),
+              '',
+              `## 意见反馈（${idea.length}）`,
+              '',
+              formatEntries(idea),
+              '',
+              '> 请在对应条目下集中回复。处理完成后可关闭本 Issue。'
+            ].join('\n');
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[用户反馈月报] ${month}`,
+              body,
+              assignees: [context.repo.owner]
+            });
+            const ids = entries.map((item) => item.id).join(',');
+            const update = await fetch(`${base}/rest/v1/feedback_entries?id=in.(${ids})`, {
+              method: 'PATCH',
+              headers: { ...headers, Prefer: 'return=minimal' },
+              body: JSON.stringify({ status: 'processed', processed_at: new Date().toISOString(), issue_url: issue.data.html_url })
+            });
+            if (!update.ok) throw new Error(await update.text());
+            fs.writeFileSync('feedback-digest.md', body);
+            core.setOutput('count', String(entries.length));
+            core.notice(`Created feedback issue: ${issue.data.html_url}`);
+
+      - name: Email digest to owner
+        if: ${{ env.QQ_SMTP_AUTH_CODE != '' && steps.digest.outputs.count != '0' }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          from email.message import EmailMessage
+          sender = "3481816300@qq.com"
+          recipient = "3481816300@qq.com"
+          message = EmailMessage()
+          message["Subject"] = "物律远征用户反馈月报"
+          message["From"] = sender
+          message["To"] = recipient
+          with open("feedback-digest.md", "r", encoding="utf-8") as file:
+              message.set_content(file.read())
+          with smtplib.SMTP_SSL("smtp.qq.com", 465) as smtp:
+              smtp.login(sender, os.environ["QQ_SMTP_AUTH_CODE"])
+              smtp.send_message(message)
+          PY

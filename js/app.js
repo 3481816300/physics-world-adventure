@@ -12,6 +12,7 @@ const App = {
     Save.load();
     Input.init();
     UI.init();
+    FeedbackCenter.init();
     this.bindEvents();
 
     this.ambient = new AmbientBackground(UI.refs.ambientCanvas);
@@ -320,6 +321,7 @@ document.addEventListener("click", (event) => {
     UI.updateAccountButton();
     UI.renderDifficultySelector();
     UI.updateResumeSaveButton();
+    FeedbackCenter.refreshAccess();
     UI.showToast(`已切换到 ${Save.getAccountName()}`);
     this.showTitle();
     this.maybeShowNextRequiredModal();
@@ -345,6 +347,7 @@ document.addEventListener("click", (event) => {
         UI.hideOnboarding();
         UI.updateAccountButton();
         UI.renderDifficultySelector();
+        FeedbackCenter.refreshAccess();
         UI.showToast(`登录成功，欢迎 ${data.nickname}`);
         this.showTitle();
         this.maybeShowNextRequiredModal();
@@ -363,6 +366,7 @@ document.addEventListener("click", (event) => {
     Save.setOnboarded();
     UI.updateAccountButton();
     UI.renderDifficultySelector();
+    FeedbackCenter.refreshAccess();
     UI.showToast("已退出登录，进入游客模式");
     this.showTitle();
   },

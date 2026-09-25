@@ -154,5 +154,32 @@ const Api = {
       method: "POST",
       body: { token, nickname, note }
     });
+  },
+
+  feedbackAccess(token) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("feedback_access", { p_token: token || null });
+    }
+    return this.request("/api/feedback/access", {
+      method: "POST",
+      body: { token: token || null }
+    });
+  },
+
+  submitFeedback(data) {
+    if (this.isSupabaseReady()) {
+      return this.supabaseRpc("submit_feedback", {
+        p_token: data.token,
+        p_kind: data.kind,
+        p_title: data.title,
+        p_content: data.content,
+        p_page: data.page,
+        p_contact: data.contact
+      });
+    }
+    return this.request("/api/feedback/submit", {
+      method: "POST",
+      body: data
+    });
   }
 };
