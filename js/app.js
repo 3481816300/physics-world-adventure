@@ -165,6 +165,7 @@ document.addEventListener("click", (event) => {
     document.getElementById("btn-owner-copy").addEventListener("click", () => this.copyOwnerWelcome());
     document.getElementById("btn-owner-back").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-owner-data-back").addEventListener("click", () => this.openOwnerAccounts());
+    document.getElementById("btn-owner-feedback-back").addEventListener("click", () => this.openAccount());
     document.getElementById("btn-intro-continue").addEventListener("click", () => this.continueChapterIntro());
     document.getElementById("btn-intro-skip").addEventListener("click", () => this.skipChapterIntro());
     document.getElementById("btn-poem-continue").addEventListener("click", () => this.finishEndPoem());
@@ -397,6 +398,27 @@ document.addEventListener("click", (event) => {
     this.loadOwnerAccounts();
   },
 
+  openOwnerFeedback() {
+    if (!Save.isAdmin()) return;
+    this.clearCompletionTimer();
+    UI.hideCompletion();
+    this.screen = "owner-feedback";
+    UI.show("owner-feedback");
+    UI.setAdminBadges(Save.isAdmin());
+    OwnerFeedback.render([], { loading: true });
+    Input.gameActive = false;
+    this.loadOwnerFeedback();
+  },
+
+  async loadOwnerFeedback() {
+    if (!Save.isAdmin()) return;
+    try {
+      const data = await Api.ownerListFeedback(Save.serverToken);
+      OwnerFeedback.render(Array.isArray(data.entries) ? data.entries : []);
+    } catch (error) {
+      OwnerFeedback.render([], { error: error.message || "读取反馈失败" });
+    }
+  },
   openOwnerAnalytics() {
     if (!Save.isAdmin()) return;
     this.clearCompletionTimer();

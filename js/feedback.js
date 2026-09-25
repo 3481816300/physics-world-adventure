@@ -25,6 +25,10 @@ const FeedbackCenter = {
     this.refs = {
       bugButton: document.getElementById("btn-bug-feedback"),
       ideaButton: document.getElementById("btn-idea-feedback"),
+      historyButton: document.getElementById("btn-my-feedback"),
+      historyModal: document.getElementById("myFeedbackModal"),
+      historyList: document.getElementById("myFeedbackList"),
+      historyClose: document.getElementById("btn-my-feedback-close"),
       modal: document.getElementById("feedbackModal"),
       title: document.getElementById("feedbackTitle"),
       intro: document.getElementById("feedbackIntro"),
@@ -38,6 +42,8 @@ const FeedbackCenter = {
     };
     this.refs.bugButton.addEventListener("click", () => this.open("bug"));
     this.refs.ideaButton.addEventListener("click", () => this.open("idea"));
+    this.refs.historyButton.addEventListener("click", () => this.openHistory());
+    this.refs.historyClose.addEventListener("click", () => this.closeHistory());
     this.refs.close.addEventListener("click", () => this.close());
     this.refs.submit.addEventListener("click", () => this.submit());
     this.refreshAccess();
@@ -45,20 +51,97 @@ const FeedbackCenter = {
 
   async refreshAccess() {
     if (Save.isGuest()) {
-      this.access = { allowed: false, plan: "" };
+      this.access = { allowed: false, plan: "", unread: 0 };
       this.refs.ideaButton.hidden = true;
+      this.refs.historyButton.hidden = true;
       return;
     }
     try {
       const access = await Api.feedbackAccess(Save.serverToken);
-      this.access = { allowed: Boolean(access.allowed), plan: access.plan || "" };
+      this.access = {
+        allowed: Boolean(access.allowed),
+        plan: access.plan || "",
+        unread: Number(access.unread) || 0
+      };
       this.refs.ideaButton.hidden = !this.access.allowed;
+      this.refs.historyButton.hidden = false;
+      this.refs.historyButton.textContent = this.access.unread
+        ? `我的反馈 (${this.access.unread})`
+        : "我的反馈";
     } catch {
-      this.access = { allowed: false, plan: "" };
+      this.access = { allowed: false, plan: "", unread: 0 };
       this.refs.ideaButton.hidden = true;
+      this.refs.historyButton.hidden = false;
+      this.refs.historyButton.textContent = "我的反馈";
     }
   },
 
+  async openHistory() {
+    if (Save.isGuest()) return;
+    this.refs.historyList.replaceChildren();
+    this.refs.historyModal.hidden = false;
+    requestAnimationFrame(() => this.refs.historyModal.classList.add("is-open"));
+    try {
+      const data = await Api.listMyFeedback(Save.serverToken);
+      this.renderHistory(Array.isArray(data.entries) ? data.entries : []);
+      await Api.markFeedbackSeen(Save.serverToken);
+      await this.refreshAccess();
+    } catch (error) {
+      const message = document.createElement("p");
+      message.className = "analytics-empty analytics-error";
+      message.textContent = error.message || "读取反馈失败";
+      this.refs.historyList.appendChild(message);
+    }
+  },
+
+  closeHistory() {
+    this.refs.historyModal.classList.remove("is-open");
+    setTimeout(() => {
+      this.refs.historyModal.hidden = true;
+    }, 200);
+  },
+
+  renderHistory(entries) {
+    this.refs.historyList.replaceChildren();
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.className = "analytics-empty";
+      empty.textContent = "还没有提交过反馈";
+      this.refs.historyList.appendChild(empty);
+      return;
+    }
+    entries.forEach((entry) => {
+      const item = document.createElement("article");
+      item.className = "my-feedback-item";
+      const head = document.createElement("div");
+      head.className = "my-feedback-head";
+      const title = document.createElement("strong");
+      title.textContent = `[${entry.kind === "idea" ? "意见" : "Bug"}] ${entry.title}`;
+      const status = document.createElement("span");
+      status.textContent = entry.reply ? "已回复" : "待处理";
+      head.appendChild(title);
+      head.appendChild(status);
+      item.appendChild(head);
+      const meta = document.createElement("small");
+      meta.textContent = new Date(entry.created_at).toLocaleString();
+      item.appendChild(meta);
+      const content = document.createElement("p");
+      content.textContent = entry.content;
+      item.appendChild(content);
+      if (entry.reply) {
+        const reply = document.createElement("div");
+        reply.className = "my-feedback-reply";
+        const replyTitle = document.createElement("strong");
+        replyTitle.textContent = "开发者回复";
+        const replyText = document.createElement("p");
+        replyText.textContent = entry.reply;
+        reply.appendChild(replyTitle);
+        reply.appendChild(replyText);
+        item.appendChild(reply);
+      }
+      this.refs.historyList.appendChild(item);
+    });
+  },
   open(kind) {
     if (kind === "idea" && !this.access.allowed) {
       UI.showToast("意见反馈仅向 12.34 元以上的爱发电档位开放");

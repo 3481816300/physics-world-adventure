@@ -2818,3 +2818,128 @@ svg {
     font-size: 12px;
   }
 }
+.feedback-history {
+  color: #b8e6ff;
+}
+
+.my-feedback-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+}
+
+.my-feedback-list {
+  display: grid;
+  gap: 10px;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.my-feedback-item {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.my-feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.my-feedback-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.my-feedback-item small,
+.my-feedback-item p,
+.my-feedback-reply p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.my-feedback-reply {
+  padding: 10px 12px;
+  border-left: 2px solid var(--teal);
+  background: rgba(47, 214, 195, 0.07);
+}
+
+.my-feedback-reply strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--teal);
+  font-size: 12px;
+}
+
+#screen-owner-feedback {
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.owner-feedback-shell {
+  width: min(1100px, calc(100% - 32px));
+  flex: 1;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 84px 0 24px;
+  overflow-y: auto;
+}
+
+.owner-feedback-item {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.74);
+}
+
+.owner-feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owner-feedback-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.owner-feedback-content {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 7px;
+}
+
+.owner-feedback-reply {
+  min-height: 100px;
+  resize: vertical;
+  padding: 11px;
+  line-height: 1.6;
+}
+
+.owner-feedback-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.owner-feedback-replied-at {
+  color: var(--muted);
+}

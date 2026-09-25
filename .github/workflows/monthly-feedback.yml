@@ -55,13 +55,12 @@ jobs:
                 `- 时间：${item.created_at}`,
                 `- 档位：${item.plan || '未标记'}`,
                 `- 页面：${item.page || '未记录'}`,
-                `- 联系方式：${item.contact || '未填写'}`,
                 '',
                 '## 详细情况',
                 '',
                 content,
                 '',
-                '> 请直接在评论中回复。处理完成后关闭本 Issue。'
+                '> 联系方式已从公开 Issue 中移除，请登录游戏所有者后台直接回复用户。'
               ].join('\n');
               const issue = await github.rest.issues.create({
                 owner: context.repo.owner,

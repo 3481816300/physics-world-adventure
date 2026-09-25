@@ -585,7 +585,7 @@ const UI = {
       <div class="account-actions">
         <button id="btn-open-password" class="btn btn-primary" type="button">修改密码</button>
         <button id="btn-view-password" class="btn btn-ghost" type="button">查看密码</button>
-        ${Save.isAdmin() ? '<button id="btn-owner-manage" class="btn btn-primary" type="button">管理所有账号</button><button id="btn-owner-analytics" class="btn btn-ghost" type="button">数据中心</button>' : ""}
+        ${Save.isAdmin() ? '<button id="btn-owner-manage" class="btn btn-primary" type="button">管理所有账号</button><button id="btn-owner-feedback" class="btn btn-ghost" type="button">反馈管理</button><button id="btn-owner-analytics" class="btn btn-ghost" type="button">数据中心</button>' : ""}
       </div>
       <div class="account-actions">
         ${Save.isAdmin() ? '<span class="owner-note">所有者账号不提供管理员退出入口，也不可被注销。</span>' : '<button id="btn-account-logout" class="btn btn-danger" type="button">退出登录</button>'}
@@ -599,6 +599,8 @@ const UI = {
     card.querySelector("#btn-account-support").addEventListener("click", () => UI.openContact("购买 / 赞助"));
     const ownerManage = card.querySelector("#btn-owner-manage");
     if (ownerManage) ownerManage.addEventListener("click", () => App.openOwnerAccounts());
+const ownerFeedback = card.querySelector("#btn-owner-feedback");
+    if (ownerFeedback) ownerFeedback.addEventListener("click", () => App.openOwnerFeedback());
     const ownerAnalytics = card.querySelector("#btn-owner-analytics");
     if (ownerAnalytics) ownerAnalytics.addEventListener("click", () => App.openOwnerAnalytics());
     panel.appendChild(card);

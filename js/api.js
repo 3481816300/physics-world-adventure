@@ -181,5 +181,25 @@ const Api = {
       method: "POST",
       body: data
     });
+  },
+
+  listMyFeedback(token) {
+    return this.supabaseRpc("list_my_feedback", { p_token: token });
+  },
+
+  markFeedbackSeen(token) {
+    return this.supabaseRpc("mark_feedback_seen", { p_token: token });
+  },
+
+  ownerListFeedback(token) {
+    return this.supabaseRpc("owner_list_feedback", { p_token: token });
+  },
+
+  ownerReplyFeedback(token, id, reply) {
+    return this.supabaseRpc("owner_reply_feedback", {
+      p_token: token,
+      p_feedback_id: id,
+      p_reply: reply
+    });
   }
 };
